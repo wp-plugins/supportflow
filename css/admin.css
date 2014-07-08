@@ -1,6 +1,11 @@
 .wp-list-table.fixed .column-sf_replies {
 	text-align: left;
-	width:      4em;
+	width:      1em;
+}
+
+.wp-list-table.fixed .column-status {
+	text-align: left;
+	width:      6em;
 }
 
 .wp-list-table.fixed .column-updated,
@@ -92,6 +97,8 @@
 	padding-right:  8px;
 	padding-top:    12px;
 	padding-bottom: 10px;
+	line-height: 100%;
+	height: 1.7em;
 }
 
 #supportflow-respondents.postbox input {
@@ -180,6 +187,8 @@
 
 #supportflow-replies.postbox ul.thread-replies li .reply-avatar {
 	float: left;
+	width: 100px;	
+        word-wrap: break-word;
 }
 
 #supportflow-replies.postbox ul.thread-replies li .reply-author {
@@ -198,6 +207,7 @@
 	-webkit-border-radius: 3px;
 	-moz-border-radius:    3px;
 	border-radius:         3px;
+	word-wrap:             break-word;
 }
 
 #supportflow-replies.postbox ul.thread-replies li .thread-meta {
