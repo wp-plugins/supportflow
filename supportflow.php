@@ -1,12 +1,13 @@
 <?php
 
+defined( 'ABSPATH' ) or die( "Cheatin' uh?" );
+
 /**
  * Plugin Name: SupportFlow
- * Plugin URI:
+ * Plugin URI:  https://wordpress.org/plugins/supportflow/
  * Description: Reinventing how you support your customers.
- * Author:      Daniel Bachhuber, Alex Mills, Andrew Spittle
- * Author URI:
- * Version:     0.1
+ * Author:      Daniel Bachhuber, Varun Agrawal, Alex Mills, Andrew Spittle
+ * Version:     0.2
  *
  * Text Domain: supportflow
  * Domain Path: /languages/
@@ -174,20 +175,24 @@ class SupportFlow {
 		$this->post_statuses = apply_filters(
 			'supportflow_thread_post_statuses', array(
 				'sf_new'     => array(
-					'label'       => __( 'New', 'supportflow' ),
-					'label_count' => _n_noop( 'New <span class="count">(%s)</span>', 'New <span class="count">(%s)</span>', 'supportflow' ),
+					'show_threads' => true,
+					'label'        => __( 'New', 'supportflow' ),
+					'label_count'  => _n_noop( 'New <span class="count">(%s)</span>', 'New <span class="count">(%s)</span>', 'supportflow' ),
 				),
 				'sf_open'    => array(
-					'label'       => __( 'Open', 'supportflow' ),
-					'label_count' => _n_noop( 'Open <span class="count">(%s)</span>', 'Open <span class="count">(%s)</span>', 'supportflow' ),
+					'show_threads' => true,
+					'label'        => __( 'Open', 'supportflow' ),
+					'label_count'  => _n_noop( 'Open <span class="count">(%s)</span>', 'Open <span class="count">(%s)</span>', 'supportflow' ),
 				),
 				'sf_pending' => array(
-					'label'       => __( 'Pending', 'supportflow' ),
-					'label_count' => _n_noop( 'Pending <span class="count">(%s)</span>', 'Pending <span class="count">(%s)</span>', 'supportflow' ),
+					'show_threads' => true,
+					'label'        => __( 'Pending', 'supportflow' ),
+					'label_count'  => _n_noop( 'Pending <span class="count">(%s)</span>', 'Pending <span class="count">(%s)</span>', 'supportflow' ),
 				),
 				'sf_closed'  => array(
-					'label'       => __( 'Closed', 'supportflow' ),
-					'label_count' => _n_noop( 'Closed <span class="count">(%s)</span>', 'Closed <span class="count">(%s)</span>', 'supportflow' ),
+					'show_threads' => false,
+					'label'        => __( 'Closed', 'supportflow' ),
+					'label_count'  => _n_noop( 'Closed <span class="count">(%s)</span>', 'Closed <span class="count">(%s)</span>', 'supportflow' ),
 				),
 			)
 		);
@@ -224,6 +229,7 @@ class SupportFlow {
 
 		require_once( $this->plugin_dir . 'classes/class-supportflow-ui-submissionform.php' );
 		require_once( $this->plugin_dir . 'classes/class-supportflow-ui-widget.php' );
+		require_once( $this->plugin_dir . 'classes/class-supportflow-statistics.php' );
 
 		/** Tools *************************************************************/
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
@@ -264,7 +270,7 @@ class SupportFlow {
 	public function action_init_register_post_type() {
 		register_post_type(
 			$this->post_type, array(
-				'labels'        => array(
+				'labels'             => array(
 					'menu_name'          => __( 'SupportFlow', 'supportflow' ),
 					'name'               => __( 'Threads', 'supportflow' ),
 					'singular_name'      => __( 'Thread', 'supportflow' ),
@@ -278,9 +284,10 @@ class SupportFlow {
 					'not_found'          => __( 'No threads found', 'supportflow' ),
 					'not_found_in_trash' => __( 'No threads found in trash', 'supportflow' ),
 				),
-				'public'        => true,
-				'menu_position' => 3,
-				'supports'      => false,
+				'public'             => true,
+				'menu_position'      => 3,
+				'publicly_queryable' => false,
+				'supports'           => false,
 			)
 		);
 	}
@@ -606,17 +613,17 @@ class SupportFlow {
 			'post_id'     => '',
 			'search'      => '',
 			'order'       => 'DESC', // 'DESC', 'ASC',
-			'numberposts' => -1,
+			'numberposts' => - 1,
 		);
 
 		$args      = array_merge( $default_args, $args );
 		$post_args = array(
-			'search'      => $args['search'],
-			'post_parent' => $args['post_id'],
-			'post_status' => $args['status'],
-			'post_type'   => $this->reply_type,
-			'order'       => $args['order'],
-			'numberposts' => $args['numberposts'],
+			'search'           => $args['search'],
+			'post_parent'      => $args['post_id'],
+			'post_status'      => $args['status'],
+			'post_type'        => $this->reply_type,
+			'order'            => $args['order'],
+			'numberposts'      => $args['numberposts'],
 			'suppress_filters' => false,
 		);
 		add_filter( 'posts_clauses', array( $this, 'filter_reply_clauses' ), 10, 2 );
@@ -661,6 +668,7 @@ class SupportFlow {
 
 		$query = new WP_Query( $args );
 		$count = $query->found_posts;
+
 		return (int) $count;
 	}
 
@@ -770,11 +778,16 @@ class SupportFlow {
 	 * Convert multiple comma seperated E-Mail ID's into a array
 	 * @return array
 	 */
-	public function extract_email_ids( $string ) {
+	public function extract_email_ids( $string, & $invalid_email_ids = array() ) {
 		$emails = str_replace( ' ', '', $string );
 		$emails = explode( ',', $emails );
-		$emails = array_filter( $emails, function ( $email ) {
-			return sanitize_email( $email ) == $email && '' != $email;
+		$emails = array_filter( $emails, function ( $email ) use ( & $invalid_email_ids ) {
+			$is_valid_email_id = sanitize_email( $email ) == $email && '' != $email;
+			if ( ! $is_valid_email_id && '' != $email ) {
+				$invalid_email_ids[] = $email;
+			}
+
+			return $is_valid_email_id;
 		} );
 
 		return $emails;
