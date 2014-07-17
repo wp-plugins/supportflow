@@ -73,8 +73,10 @@ class SupportFlow_Admin extends SupportFlow {
 
 			wp_localize_script( 'supportflow-respondents-autocomplete', 'SFRespondentsAc', array( 'ajax_url' => $ajaxurl ) );
 			wp_localize_script( 'supportflow-thread-attachments', 'SFThreadAttachments', array(
-				'frame_title'  => __( 'Attach files', 'supportflow' ),
-				'button_title' => __( 'Insert as attachment', 'supportflow' ),
+				'frame_title'       => __( 'Attach files', 'supportflow' ),
+				'button_title'      => __( 'Insert as attachment', 'supportflow' ),
+				'remove_attachment' => __( 'Remove', 'supportflow' ),
+				'sure_remove'       => __( 'Are you sure want to remove this attachment?', 'supportflow' ),
 			) );
 			wp_localize_script( 'supportflow-threads', 'SFThreads', array(
 				'no_title_msg'      => __( 'You must need to specify the subject of the thread', 'supportpress' ),
@@ -234,11 +236,8 @@ class SupportFlow_Admin extends SupportFlow {
 		echo "<select name='email_account' id='email_account' class='postform'>";
 		echo "<option value=''>" . __( 'Show All Accounts', 'supportflow' ) . "</option>";
 		foreach ( $email_accounts as $id => $email_account ) {
-			if ( empty( $email_account ) ) {
-				continue;
-			}
 			$selected = selected( isset( $_REQUEST['email_account'] ) && ( $_REQUEST['email_account'] == $id ), true, false );
-			echo "<option value='" . esc_attr( $id ) . "'$selected>" . esc_html( $email_account['username'] . ' (' . $email_account['imap_host'] . ')' ) . '</option>';
+			echo "<option value='" . esc_attr( $id ) . "'$selected>" . esc_html( $email_account['username'] ) . '</option>';
 		}
 		echo "</select>";
 
@@ -655,7 +654,7 @@ class SupportFlow_Admin extends SupportFlow {
 
 		<div id="major-publishing-actions">
 			<div id="publishing-action">
-				<?php submit_button( $submit_text, 'primary', 'save', false ); ?>
+				<?php submit_button( $submit_text, 'save-button primary', 'save', false ); ?>
 			</div>
 			<div class="clear"></div>
 		</div>
@@ -755,9 +754,12 @@ class SupportFlow_Admin extends SupportFlow {
 		echo '</div>';
 		echo '<ul id="replies-attachments-list">';
 		echo '</ul>';
-		echo '<input type="hidden" id="reply-attachments" name="reply-attachments" />';
+		echo '<input type="hidden" id="reply-attachments" name="reply-attachments" value="," />';
 		echo '</div>';
 		echo '<div id="submit-action">';
+		$signature_label_title = __( 'Append your signature at the bottom of the reply. Signature can be removed or changed in preferences page', 'supportflow' );
+		echo '<input type="checkbox" checked="checked" id="insert-signature" name="insert-signature" />';
+		echo "<label for='insert-signature' title='$signature_label_title'>" . __( 'Insert signature', 'supportflow' ) . '</label>';
 		echo '<input type="checkbox" id="mark-private" name="mark-private" />';
 		echo '<label for="mark-private">' . __( 'Mark private', 'supportflow' ) . '</label>';
 		if ( 'post-new.php' == $pagenow ) {
@@ -913,6 +915,7 @@ class SupportFlow_Admin extends SupportFlow {
 			case 'sf_excerpt':
 				$replies = SupportFlow()->get_thread_replies( $thread_id, array( 'numberposts' => 1, 'order' => 'ASC' ) );
 				if ( ! isset( $replies[0] ) ) {
+					echo '—';
 					break;
 				}
 				$first_reply = $replies[0]->post_content;
@@ -932,8 +935,9 @@ class SupportFlow_Admin extends SupportFlow {
 						SupportFlow()->respondents_tax => SupportFlow()->get_email_hash( $respondent_email ),
 						'post_type'                    => SupportFlow()->post_type,
 					);
-					$respondent_link   = '<a href="' . esc_url( add_query_arg( $args, admin_url( 'edit.php' ) ) ) . '">' . $respondent_email . '</a>';
-					$respondents[$key] = get_avatar( $respondent_email, 16 ) . '&nbsp;&nbsp;' . $respondent_link;
+					$respondent_photo  = get_avatar( $respondent_email, 16 );
+					$respondent_link   = '<a class="respondent_link" href="' . esc_url( add_query_arg( $args, admin_url( 'edit.php' ) ) ) . '">' . $respondent_email . '</a>';
+					$respondents[$key] = $respondent_photo . '&nbsp;' . $respondent_link;
 				}
 				echo implode( '<br />', $respondents );
 				break;
@@ -983,9 +987,8 @@ class SupportFlow_Admin extends SupportFlow {
 		if ( in_array( $pagenow, array( 'edit.php', 'post-new.php' ) ) && ! empty( $_GET['post_type'] ) && $_GET['post_type'] == SupportFlow()->post_type ) {
 			return $pagenow;
 		} elseif ( 'post.php' == $pagenow && ! empty( $_GET['action'] ) && 'edit' == $_GET['action'] && ! empty( $_GET['post'] ) ) {
-			$the_post = get_post( $_GET['post'] );
-
-			return ( $the_post->post_type == SupportFlow()->post_type ) ? $pagenow : false;
+			$the_post = get_post( absint( $_GET['post'] ) );
+			return (  is_a( $the_post, 'WP_Post' ) && $the_post->post_type == SupportFlow()->post_type ) ? $pagenow : false;
 		} else {
 			return false;
 		}
@@ -1019,7 +1022,17 @@ class SupportFlow_Admin extends SupportFlow {
 		}
 
 		if ( isset( $_POST['reply'] ) && ! empty( $_POST['reply'] ) ) {
-			$reply      = wp_filter_nohtml_kses( $_POST['reply'] );
+			$reply = $_POST['reply'];
+
+			if ( isset( $_POST['insert-signature'] ) && 'on' == $_POST['insert-signature'] ) {
+				$agent_signature = get_user_meta( get_current_user_id(), 'sf_user_signature', true );
+				if ( ! empty( $agent_signature ) ) {
+					$reply .= "\n\n-----\n$agent_signature";
+				}
+			}
+
+			$reply = wp_filter_nohtml_kses( $reply );
+
 			$visibility = ( ! empty( $_POST['mark-private'] ) ) ? 'private' : 'public';
 			if ( ! empty( $_POST['reply-attachments'] ) ) {
 				$attachment_ids = array_map( 'intval', explode( ',', trim( $_POST['reply-attachments'], ',' ) ) );

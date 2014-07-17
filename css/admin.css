@@ -1,20 +1,10 @@
-.wp-list-table.fixed .column-sf_replies {
-	text-align: left;
-	width:      1em;
-}
-
-.wp-list-table.fixed .column-status {
-	text-align: left;
-	width:      6em;
-}
-
-.wp-list-table.fixed .column-updated,
-.wp-list-table.fixed .column-created {
-	width: 10%;
-}
-
 .subsubsub li.trash a {
 	color: #BC0B0B;
+}
+
+.respondent_link {
+	white-space: pre;
+	vertical-align: top;
 }
 
 #poststuff {
@@ -29,6 +19,10 @@
 	display:     inline;
 	font-weight: bold;
 	font-size:   16px;
+}
+
+#update_signature {
+	width: 30em;
 }
 
 #supportflow-details .meta-item-label {
