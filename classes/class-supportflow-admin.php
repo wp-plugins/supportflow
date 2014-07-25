@@ -14,7 +14,7 @@ class SupportFlow_Admin extends SupportFlow {
 
 	public function setup_actions() {
 
-		// Creating or updating a thread
+		// Creating or updating a ticket
 		add_action( 'add_meta_boxes', array( $this, 'action_add_meta_boxes' ) );
 		add_action( 'save_post', array( $this, 'action_save_post' ) );
 
@@ -27,7 +27,7 @@ class SupportFlow_Admin extends SupportFlow {
 		add_filter( 'post_updated_messages', array( $this, 'filter_post_updated_messages' ) );
 		add_action( 'admin_init', array( $this, 'action_admin_init' ) );
 
-		// Manage threads view
+		// Manage tickets view
 		add_filter( 'manage_' . SupportFlow()->post_type . '_posts_columns', array( $this, 'filter_manage_post_columns' ) );
 		add_filter( 'manage_edit-' . SupportFlow()->post_type . '_sortable_columns', array( $this, 'manage_sortable_columns' ) );
 		add_action( 'manage_posts_custom_column', array( $this, 'action_manage_posts_custom_column' ), 10, 2 );
@@ -65,22 +65,22 @@ class SupportFlow_Admin extends SupportFlow {
 		if ( 'post.php' == $pagenow || 'post-new.php' == $pagenow ) {
 			wp_enqueue_media();
 
-			wp_enqueue_script( 'supportflow-thread-attachments', SupportFlow()->plugin_url . 'js/thread_attachments.js', array( 'jquery' ) );
+			wp_enqueue_script( 'supportflow-ticket-attachments', SupportFlow()->plugin_url . 'js/ticket_attachments.js', array( 'jquery' ) );
 			wp_enqueue_script( 'supportflow-respondents-autocomplete', SupportFlow()->plugin_url . 'js/respondents-autocomplete.js', array( 'jquery', 'jquery-ui-autocomplete' ) );
-			wp_enqueue_script( 'supportflow-threads', SupportFlow()->plugin_url . 'js/threads.js', array( 'jquery' ) );
+			wp_enqueue_script( 'supportflow-tickets', SupportFlow()->plugin_url . 'js/tickets.js', array( 'jquery' ) );
 
 			$ajaxurl = add_query_arg( 'action', SupportFlow()->extend->jsonapi->action, admin_url( 'admin-ajax.php' ) );
 
 			wp_localize_script( 'supportflow-respondents-autocomplete', 'SFRespondentsAc', array( 'ajax_url' => $ajaxurl ) );
-			wp_localize_script( 'supportflow-thread-attachments', 'SFThreadAttachments', array(
+			wp_localize_script( 'supportflow-ticket-attachments', 'SFTicketAttachments', array(
 				'frame_title'       => __( 'Attach files', 'supportflow' ),
 				'button_title'      => __( 'Insert as attachment', 'supportflow' ),
 				'remove_attachment' => __( 'Remove', 'supportflow' ),
 				'sure_remove'       => __( 'Are you sure want to remove this attachment?', 'supportflow' ),
 			) );
-			wp_localize_script( 'supportflow-threads', 'SFThreads', array(
-				'no_title_msg'      => __( 'You must need to specify the subject of the thread', 'supportpress' ),
-				'no_respondent_msg' => __( 'You must need to add atleast one thread respondent', 'supportpress' ),
+			wp_localize_script( 'supportflow-tickets', 'SFTickets', array(
+				'no_title_msg'      => __( 'You must need to specify the subject of the ticket', 'supportpress' ),
+				'no_respondent_msg' => __( 'You must need to add atleast one ticket respondent', 'supportpress' ),
 			) );
 		}
 
@@ -110,9 +110,9 @@ class SupportFlow_Admin extends SupportFlow {
 		}
 
 		$email_ids = SupportFlow()->extract_email_ids( $_REQUEST['email_ids'] );
-		$thread_id = (int) $_REQUEST['post_id'];
+		$ticket_id = (int) $_REQUEST['post_id'];
 
-		if ( ! current_user_can( 'edit_post', $thread_id ) ) {
+		if ( ! current_user_can( 'edit_post', $ticket_id ) ) {
 			_e( 'You are not allowed to edit this item.' );
 			die;
 		}
@@ -122,31 +122,31 @@ class SupportFlow_Admin extends SupportFlow {
 			die;
 		}
 
-		SupportFlow()->extend->emails->email_conversation( $thread_id, $email_ids );
+		SupportFlow()->extend->emails->email_conversation( $ticket_id, $email_ids );
 
 		_e( 'Successfully sented E-Mails', 'supportflow' );
 		exit;
 	}
 
 	/**
-	 * Filter the messages that appear to the user after they perform an action on a thread
+	 * Filter the messages that appear to the user after they perform an action on a ticket
 	 */
 	public function filter_post_updated_messages( $messages ) {
 		global $post;
 
 		$messages[SupportFlow()->post_type] = array(
 			0  => '', // Unused. Messages start at index 1.
-			1  => __( 'Thread updated.', 'supportflow' ),
+			1  => __( 'Ticket updated.', 'supportflow' ),
 			2  => __( 'Custom field updated.', 'supportflow' ),
 			3  => __( 'Custom field deleted.', 'supportflow' ),
-			4  => __( 'Thread updated.', 'supportflow' ),
+			4  => __( 'Ticket updated.', 'supportflow' ),
 			/* translators: %s: date and time of the revision */
-			5  => isset( $_GET['revision'] ) ? sprintf( __( 'Thread restored to revision from %s', 'supportflow' ), wp_post_revision_title( (int) $_GET['revision'], false ) ) : false,
-			6  => __( 'Thread updated.', 'supportflow' ),
-			7  => __( 'Thread updated.', 'supportflow' ),
-			8  => __( 'Thread updated.', 'supportflow' ),
-			9  => __( 'Thread updated.', 'supportflow' ),
-			10 => __( 'Thread updated.', 'supportflow' ),
+			5  => isset( $_GET['revision'] ) ? sprintf( __( 'Ticket restored to revision from %s', 'supportflow' ), wp_post_revision_title( (int) $_GET['revision'], false ) ) : false,
+			6  => __( 'Ticket updated.', 'supportflow' ),
+			7  => __( 'Ticket updated.', 'supportflow' ),
+			8  => __( 'Ticket updated.', 'supportflow' ),
+			9  => __( 'Ticket updated.', 'supportflow' ),
+			10 => __( 'Ticket updated.', 'supportflow' ),
 		);
 
 		return $messages;
@@ -156,14 +156,12 @@ class SupportFlow_Admin extends SupportFlow {
 	 *
 	 */
 	public function filter_views( $views ) {
-		global $wpdb;
-
 		$post_type     = SupportFlow()->post_type;
 		$statuses     = SupportFlow()->post_statuses;
 		$status_slugs = array();
 
 		foreach ( $statuses as $status => $status_data ) {
-			if ( true == $status_data['show_threads'] ) {
+			if ( true == $status_data['show_tickets'] ) {
 				$status_slugs[] = $status;
 			}
 		}
@@ -179,32 +177,55 @@ class SupportFlow_Admin extends SupportFlow {
 		$class    = empty( $class ) && empty( $_REQUEST['post_status'] ) && empty( $_REQUEST['show_sticky'] ) ? ' class="current"' : '';
 		$view_all = "<a href='edit.php?post_type=$post_type'$class>" . sprintf( _nx( 'All <span class="count">(%s)</span>', 'All <span class="count">(%s)</span>', $total_posts, 'posts' ), number_format_i18n( $total_posts ) ) . '</a>';
 
-		// @todo Only show "Mine" if the user is an agent
-		$mine_args     = array(
-			'post_type' => SupportFlow()->post_type,
-			'author'    => get_current_user_id(),
-		);
 		$post_statuses = SupportFlow()->post_statuses;
 		array_pop( $post_statuses );
 		$post_statuses = "'" . implode( "','", array_map( 'sanitize_key', array_keys( $post_statuses ) ) ) . "'";
-		$my_posts      = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $wpdb->posts WHERE post_type=%s AND post_author=%d AND post_status IN ({$post_statuses})", SupportFlow()->post_type, get_current_user_id() ) );
-		$view_mine     = '<a href="' . add_query_arg( $mine_args, admin_url( 'edit.php' ) ) . '">' . sprintf( _nx( 'Mine <span class="count">(%s)</span>', 'Mine <span class="count">(%s)</span>', $my_posts, 'posts' ), number_format_i18n( $my_posts ) ) . '</a>';
+
+		// @todo Only show "Mine" if the user is an agent
+		$mine_args = array(
+			'post_type' => SupportFlow()->post_type,
+			'author'    => get_current_user_id(),
+		);
+		$wp_query  = new WP_Query( array(
+			'post_type'      => SupportFlow()->post_type,
+			'author'         => get_current_user_id(),
+			'post_status'    => $post_statuses,
+			'posts_per_page' => 1,
+		) );
+
+		$my_posts  = $wp_query->found_posts;
+		$view_mine = '<a href="' . add_query_arg( $mine_args, admin_url( 'edit.php' ) ) . '">' . sprintf( _nx( 'Mine <span class="count">(%s)</span>', 'Mine <span class="count">(%s)</span>', $my_posts, 'posts' ), number_format_i18n( $my_posts ) ) . '</a>';
+
+		$unassigned_args = array(
+			'post_type' => SupportFlow()->post_type,
+			'author'    => 0,
+		);
+		$wp_query        = new WP_Query( array(
+			'post_type'      => SupportFlow()->post_type,
+			'author'         => 0,
+			'post_status'    => $post_statuses,
+			'posts_per_page' => 1,
+		) );
+
+		$unassigned_posts = $wp_query->found_posts;
+		$view_unassigned  = '<a href="' . add_query_arg( $unassigned_args, admin_url( 'edit.php' ) ) . '">' . sprintf( _nx( 'Unassigned <span class="count">(%s)</span>', 'Unassigned <span class="count">(%s)</span>', $unassigned_posts, 'posts' ), number_format_i18n( $unassigned_posts ) ) . '</a>';
 
 		// Put 'All' and 'Mine' at the beginning of the array
 		array_shift( $views );
-		$views         = array_reverse( $views );
-		$views['mine'] = $view_mine;
-		$views['all']  = $view_all;
-		$views         = array_reverse( $views );
+		$views               = array_reverse( $views );
+		$views['unassigned'] = $view_unassigned;
+		$views['mine']       = $view_mine;
+		$views['all']        = $view_all;
+		$views               = array_reverse( $views );
 
-		// Remove private option from filter links as they are just private replies to thread
+		// Remove private option from filter links as they are just private replies to ticket
 		unset( $views['private'] );
 
 		return $views;
 	}
 
 	/**
-	 * Add custom filters for the Manage Threads view
+	 * Add custom filters for the Manage Tickets view
 	 */
 	public function action_restrict_manage_posts() {
 
@@ -250,7 +271,7 @@ class SupportFlow_Admin extends SupportFlow {
 
 		// Rename these actions
 		if ( isset( $row_actions['edit'] ) ) {
-			$row_actions['edit'] = str_replace( __( 'Edit' ), __( 'View', 'supportflow' ), str_replace( __( 'Edit this item' ), __( 'View Thread', 'supportflow' ), $row_actions['edit'] ) );
+			$row_actions['edit'] = str_replace( __( 'Edit' ), __( 'View', 'supportflow' ), str_replace( __( 'Edit this item' ), __( 'View Ticket', 'supportflow' ), $row_actions['edit'] ) );
 		}
 
 		// Save the trash action for the end
@@ -277,15 +298,15 @@ class SupportFlow_Admin extends SupportFlow {
 				'action'      => 'change_status',
 				'sf_nonce'    => wp_create_nonce( 'sf-change-status' ),
 				'post_status' => $change_to,
-				'thread_id'   => $post->ID,
+				'ticket_id'   => $post->ID,
 				'post_type'   => SupportFlow()->post_type,
 			);
 			$action_link = add_query_arg( $args, admin_url( 'edit.php' ) );
 			if ( $last_status == $change_to ) {
-				$title_attr  = esc_attr__( 'Close Thread', 'supportflow' );
+				$title_attr  = esc_attr__( 'Close Ticket', 'supportflow' );
 				$action_text = esc_html__( 'Close', 'supportflow' );
 			} else {
-				$title_attr  = esc_attr__( 'Reopen Thread', 'supportflow' );
+				$title_attr  = esc_attr__( 'Reopen Ticket', 'supportflow' );
 				$action_text = esc_html__( 'Reopen', 'supportflow' );
 			}
 
@@ -315,7 +336,7 @@ class SupportFlow_Admin extends SupportFlow {
 	}
 
 	/**
-	 * Handle which threads are show on the Manage Threads view when
+	 * Handle which tickets are show on the Manage Tickets view when
 	 */
 	function action_pre_get_posts( $query ) {
 		global $pagenow;
@@ -328,7 +349,7 @@ class SupportFlow_Admin extends SupportFlow {
 		$status_slugs = array();
 
 		foreach ( $statuses as $status => $status_data ) {
-			if ( true == $status_data['show_threads'] ) {
+			if ( true == $status_data['show_tickets'] ) {
 				$status_slugs[] = $status;
 			}
 		}
@@ -368,17 +389,30 @@ class SupportFlow_Admin extends SupportFlow {
 			add_filter( 'posts_search', array( $this, 'filter_posts_search' ) );
 		}
 
-		// Only show threads with the last status if the last status is set
+		// Only show tickets with the last status if the last status is set
 		$post_status = $query->get( 'post_status' );
 		if ( ! $query->get( 's' ) && empty( $post_status ) ) {
 			$query->set( 'post_status', $status_slugs );
 		}
 
+		add_action( 'posts_clauses', array( $this, 'filter_author_clause' ), 10, 2 );
 
 		if ( isset( $_GET['email_account'] ) && ! empty( $_GET['email_account'] ) ) {
 			$query->set( 'meta_key', 'email_account' );
 			$query->set( 'meta_value', (int) $_GET['email_account'] );
 		}
+	}
+
+	/*
+	 * Show unassigned tickets when query author is 0
+	 */
+	public function filter_author_clause( $clauses, $query ) {
+
+		if ( isset( $query->query['author'] ) && 0 == $query->query['author'] ) {
+			$clauses['where'] .= ' AND post_author = 0 ';
+		}
+
+		return $clauses;
 	}
 
 	/**
@@ -393,7 +427,7 @@ class SupportFlow_Admin extends SupportFlow {
 	 */
 	function handle_action_change_status() {
 
-		if ( ! isset( $_GET['action'], $_GET['sf_nonce'], $_GET['post_status'], $_GET['thread_id'] ) ) {
+		if ( ! isset( $_GET['action'], $_GET['sf_nonce'], $_GET['post_status'], $_GET['ticket_id'] ) ) {
 			return;
 		}
 
@@ -401,18 +435,18 @@ class SupportFlow_Admin extends SupportFlow {
 			wp_die( __( "Doin' something phishy, huh?", 'supportflow' ) );
 		}
 
-		$thread_id = (int) $_GET['thread_id'];
+		$ticket_id = (int) $_GET['ticket_id'];
 
-		if ( ! current_user_can( 'edit_post', $thread_id ) ) {
+		if ( ! current_user_can( 'edit_post', $ticket_id ) ) {
 			wp_die( __( 'You are not allowed to edit this item.' ) );
 		}
 
 		$post_status = sanitize_key( $_GET['post_status'] );
-		$new_thread  = array(
-			'ID'          => $thread_id,
+		$new_ticket  = array(
+			'ID'          => $ticket_id,
 			'post_status' => $post_status,
 		);
-		wp_update_post( $new_thread );
+		wp_update_post( $new_ticket );
 		wp_safe_redirect( wp_get_referer() );
 		exit;
 	}
@@ -420,9 +454,9 @@ class SupportFlow_Admin extends SupportFlow {
 	/**
 	 * Manipulate the meta boxes appearing on the edit post view
 	 *
-	 * When creating a new thread, you should be able to:
+	 * When creating a new ticket, you should be able to:
 	 *
-	 * When updating an existing thread, you should be able to:
+	 * When updating an existing ticket, you should be able to:
 	 *
 	 */
 	public function action_add_meta_boxes() {
@@ -459,7 +493,7 @@ class SupportFlow_Admin extends SupportFlow {
 	}
 
 	/**
-	 * Show details about the thread, and allow the post status and agent to be changed
+	 * Show details about the ticket, and allow the post status and agent to be changed
 	 */
 	public function meta_box_details() {
 		global $pagenow;
@@ -509,18 +543,20 @@ class SupportFlow_Admin extends SupportFlow {
 		$user_permissions = SupportFlow()->extend->permissions->get_user_permissions_data( get_current_user_id() );
 		$user_permissions = $user_permissions['email_accounts'];
 
-		$email_account_dropdown = '<select class="meta-item-dropdown">';
-		foreach ( $email_accounts as $id => $email_accoun_id ) {
-			if ( empty( $email_accoun_id ) || ( ! current_user_can( 'manage_options' ) && ! in_array( $id, $user_permissions ) ) ) {
-				continue;
+		if ( 'post-new.php' == $pagenow ) {
+			$email_account_dropdown = '<select class="meta-item-dropdown">';
+			foreach ( $email_accounts as $id => $email_account_id ) {
+				if ( empty( $email_account_id ) || ( ! current_user_can( 'manage_options' ) && ! in_array( $id, $user_permissions ) ) ) {
+					continue;
+				}
+				$email_account_dropdown .= '<option value="' . esc_attr( $id ) . '" ' . '>' . esc_html( $email_account_id['username'] ) . '</option>';
 			}
-			$email_account_dropdown .= '<option value="' . esc_attr( $id ) . '" ' . '>' . esc_html( $email_accoun_id['username'] ) . '</option>';
-		}
-		$email_account_dropdown .= '</select>';
+			$email_account_dropdown .= '</select>';
 
-		$email_account_keys  = array_keys( $email_accounts );
-		$email_account_id    = $email_account_keys[0];
-		$email_account_label = $email_accounts[$email_account_id]['username'];
+			$email_account_keys  = array_keys( $email_accounts );
+			$email_account_id    = $email_account_keys[0];
+			$email_account_label = $email_accounts[$email_account_id]['username'];
+		}
 
 		// Get E-Mail notification settings
 		$notification_id          = 0;
@@ -558,9 +594,9 @@ class SupportFlow_Admin extends SupportFlow {
 
 		// Get submit button label
 		if ( 'post-new.php' == $pagenow ) {
-			$submit_text = __( 'Start Thread', 'supportflow' );
+			$submit_text = __( 'Start Ticket', 'supportflow' );
 		} else {
-			$submit_text = __( 'Update Thread', 'supportflow' );
+			$submit_text = __( 'Update Ticket', 'supportflow' );
 		}
 		?>
 
@@ -584,21 +620,21 @@ class SupportFlow_Admin extends SupportFlow {
 					</div>
 				<?php endif; ?>
 
-				<!--Thread opening date/time-->
+				<!--Ticket opening date/time-->
 				<?php if ( 'post.php' == $pagenow ) : ?>
 					<div class="misc-pub-section meta-item">
 						<label><?php _e( 'Opened', 'supportflow' ) ?>:</label>
 						<span class="meta-item-label"><?php esc_html_e( $opened ) ?></span>
 					</div>
 
-					<!--Last thread update time-->
+					<!--Last ticket update time-->
 					<div class="misc-pub-section meta-item">
 						<label><?php _e( 'Last Activity', 'supportflow' ) ?>:</label>
 						<span class="meta-item-label"><?php esc_html_e( $last_activity ) ?></span>
 					</div>
 				<?php endif; ?>
 
-				<!--Thread status box-->
+				<!--Ticket status box-->
 				<div class="misc-pub-section meta-item">
 					<label class="meta-item-toggle-button"><?php _e( 'Status', 'supportflow' ) ?>:</label>
 					<span class="meta-item-label"><?php esc_html_e( $current_status_label, 'supportflow' ) ?></span>
@@ -669,7 +705,7 @@ class SupportFlow_Admin extends SupportFlow {
 		$placeholder = __( 'What is your conversation about?', 'supportflow' );
 		echo '<h4>' . __( 'Subject', 'supportflow' ) . '</h4>';
 		echo '<input type="text" id="subject" name="post_title" placeholder="' . $placeholder . '" value="' . get_the_title() . '" autocomplete="off" />';
-		echo '<p class="description">' . __( 'Please describe what this thread is about in several words', 'supportflow' ) . '</p>';
+		echo '<p class="description">' . __( 'Please describe what this ticket is about in several words', 'supportflow' ) . '</p>';
 
 	}
 
@@ -678,7 +714,7 @@ class SupportFlow_Admin extends SupportFlow {
 	 */
 	public function meta_box_respondents() {
 
-		$respondents        = SupportFlow()->get_thread_respondents( get_the_ID(), array( 'fields' => 'emails' ) );
+		$respondents        = SupportFlow()->get_ticket_respondents( get_the_ID(), array( 'fields' => 'emails' ) );
 		$respondents_string = implode( ', ', $respondents );
 		$respondents_string .= empty( $respondents_string ) ? '' : ', ';
 		$placeholder = __( 'Who are you starting a conversation with?', 'supportflow' );
@@ -729,28 +765,40 @@ class SupportFlow_Admin extends SupportFlow {
 			}
 		}
 
-		$placeholders = array(
-			__( "What's burning?", 'supportflow' ),
-			__( 'What do you need to get off your chest?', 'supportflow' ),
-		);
+		$email_account_id = get_post_meta( get_the_ID(), 'email_account', true );
+		$email_account    = SupportFlow()->extend->email_accounts->get_email_account( $email_account_id );
 
-		$rand = array_rand( $placeholders );
+		$ticket_lock       = ( null == $email_account && '' != $email_account_id );
+		$disabled_attr     = $ticket_lock ? 'disabled' : '';
+		$submit_attr_array = $ticket_lock ? array( 'disabled' => 'true' ) : array();
+
+		if ( $ticket_lock ) {
+			$placeholder = __( "Ticket is locked permanently because E-Mail account associated with it is deleted. Please create a new ticket now. You can't now reply to it.", 'supportflow' );
+		} else {
+			$placeholders = array(
+				__( "What's burning?", 'supportflow' ),
+				__( 'What do you need to get off your chest?', 'supportflow' ),
+			);
+			$rand        = array_rand( $placeholders );
+			$placeholder = $placeholders[$rand];
+		}
+
 		echo '<div class="alignleft"><h4>' . __( 'Conversation', 'supportflow' ) . '</h4></div>';
 		echo '<div class="alignright">';
-		echo '<select id="predefs"  class="predefined_replies_dropdown">';
+		echo '<select id="predefs" ' . $disabled_attr . ' class="predefined_replies_dropdown">';
 		foreach ( $pre_defs as $pre_def ) {
 			echo '<option class="predef" data-content="' . esc_attr( $pre_def['content'] ) . '">' . esc_html( $pre_def['title'] ) . "</option>\n";
 		}
 		echo '</select></div>';
 
-		echo '<div id="thread-reply-box">';
-		echo "<textarea id='reply' name='reply' class='thread-reply' rows='4' placeholder='" . esc_attr( $placeholders[$rand] ) . "'>";
+		echo '<div id="ticket-reply-box">';
+		echo "<textarea id='reply' name='reply' $disabled_attr class='ticket-reply' rows='4' placeholder='" . esc_attr( $placeholder ) . "'>";
 		echo "</textarea>";
 
 		echo '<div id="message-tools">';
 		echo '<div id="replies-attachments-wrap">';
 		echo '<div class="drag-drop-buttons">';
-		echo '<input id="reply-attachment-browse-button" type="button" value="' . esc_attr( __( 'Attach files', 'supportflow' ) ) . '" class="button" />';
+		echo '<input id="reply-attachment-browse-button" ' . $disabled_attr . ' type="button" value="' . esc_attr( __( 'Attach files', 'supportflow' ) ) . '" class="button" />';
 		echo '</div>';
 		echo '<ul id="replies-attachments-list">';
 		echo '</ul>';
@@ -758,16 +806,16 @@ class SupportFlow_Admin extends SupportFlow {
 		echo '</div>';
 		echo '<div id="submit-action">';
 		$signature_label_title = __( 'Append your signature at the bottom of the reply. Signature can be removed or changed in preferences page', 'supportflow' );
-		echo '<input type="checkbox" checked="checked" id="insert-signature" name="insert-signature" />';
+		echo '<input type="checkbox" ' . $disabled_attr . '	checked="checked" id="insert-signature" name="insert-signature" />';
 		echo "<label for='insert-signature' title='$signature_label_title'>" . __( 'Insert signature', 'supportflow' ) . '</label>';
-		echo '<input type="checkbox" id="mark-private" name="mark-private" />';
+		echo '<input type="checkbox" ' . $disabled_attr . ' id="mark-private" name="mark-private" />';
 		echo '<label for="mark-private">' . __( 'Mark private', 'supportflow' ) . '</label>';
 		if ( 'post-new.php' == $pagenow ) {
-			$submit_text = __( 'Start Thread', 'supportflow' );
+			$submit_text = __( 'Start Ticket', 'supportflow' );
 		} else {
 			$submit_text = __( 'Send Message', 'supportflow' );
 		}
-		submit_button( $submit_text, 'primary save-button', 'save', false );
+		submit_button( $submit_text, 'primary save-button', 'save', false, $submit_attr_array );
 		echo '</div>';
 		echo '</div>';
 
@@ -775,18 +823,18 @@ class SupportFlow_Admin extends SupportFlow {
 
 		echo '<div class="clear"></div>';
 
-		$this->display_thread_replies();
+		$this->display_ticket_replies();
 	}
 
-	public function display_thread_replies() {
+	public function display_ticket_replies() {
 
-		$private_replies = SupportFlow()->get_thread_replies( get_the_ID(), array( 'status' => 'private' ) );
+		$private_replies = SupportFlow()->get_ticket_replies( get_the_ID(), array( 'status' => 'private' ) );
 
 		if ( ! empty( $private_replies ) ) {
 			echo '<ul class="private-replies">';
 			foreach ( $private_replies as $reply ) {
 				echo '<li>';
-				echo '<div class="thread-reply">';
+				echo '<div class="ticket-reply">';
 				$post_content = wpautop( stripslashes( $reply->post_content ) );
 				// Make link clickable
 				$post_content = make_clickable( $post_content );
@@ -796,7 +844,7 @@ class SupportFlow_Admin extends SupportFlow {
 					'post_type'   => 'attachment'
 				);
 				if ( $attachments = get_posts( $attachment_args ) ) {
-					echo '<ul class="thread-reply-attachments">';
+					echo '<ul class="ticket-reply-attachments">';
 					foreach ( $attachments as $attachment ) {
 						$attachment_link = wp_get_attachment_url( $attachment->ID );
 						echo '<li><a target="_blank" href="' . esc_url( $attachment_link ) . '">' . esc_html( $attachment->post_title ) . '</a></li>';
@@ -808,15 +856,15 @@ class SupportFlow_Admin extends SupportFlow {
 				$reply_timestamp = sprintf( __( 'Noted by %1$s on %2$s at %3$s', 'supportflow' ), $reply_author, get_the_date(), get_the_time() );
 				$modified_gmt    = get_post_modified_time( 'U', true, get_the_ID() );
 				$last_activity   = sprintf( __( '%s ago', 'supportflow' ), human_time_diff( $modified_gmt ) );
-				echo '<div class="thread-meta"><span class="reply-timestamp">' . esc_html( $reply_timestamp ) . ' (' . $last_activity . ')' . '</span></div>';
+				echo '<div class="ticket-meta"><span class="reply-timestamp">' . esc_html( $reply_timestamp ) . ' (' . $last_activity . ')' . '</span></div>';
 				echo '</li>';
 			}
 			echo '</ul>';
 		}
 
-		$replies = SupportFlow()->get_thread_replies( get_the_ID(), array( 'status' => 'public' ) );
+		$replies = SupportFlow()->get_ticket_replies( get_the_ID(), array( 'status' => 'public' ) );
 		if ( ! empty( $replies ) ) {
-			echo '<ul class="thread-replies">';
+			echo '<ul class="ticket-replies">';
 			foreach ( $replies as $reply ) {
 				$reply_author       = get_post_meta( $reply->ID, 'reply_author', true );
 				$reply_author_email = get_post_meta( $reply->ID, 'reply_author_email', true );
@@ -824,7 +872,7 @@ class SupportFlow_Admin extends SupportFlow {
 				echo '<div class="reply-avatar">' . get_avatar( $reply_author_email, 72 );
 				echo '<p class="reply-author">' . esc_html( $reply_author ) . '</p>';
 				echo '</div>';
-				echo '<div class="thread-reply">';
+				echo '<div class="ticket-reply">';
 				$post_content = wpautop( stripslashes( $reply->post_content ) );
 				// Make link clickable
 				$post_content = make_clickable( $post_content );
@@ -834,7 +882,7 @@ class SupportFlow_Admin extends SupportFlow {
 					'post_type'   => 'attachment'
 				);
 				if ( $attachments = get_posts( $attachment_args ) ) {
-					echo '<ul class="thread-reply-attachments">';
+					echo '<ul class="ticket-reply-attachments">';
 					foreach ( $attachments as $attachment ) {
 						$attachment_link = wp_get_attachment_url( $attachment->ID );
 						echo '<li><a target="_blank" href="' . esc_url( $attachment_link ) . '">' . esc_html( $attachment->post_title ) . '</a></li>';
@@ -845,7 +893,7 @@ class SupportFlow_Admin extends SupportFlow {
 				$reply_timestamp = sprintf( __( '%s at %s', 'supportflow' ), get_the_date(), get_the_time() );
 				$modified_gmt    = get_post_modified_time( 'U', true, get_the_ID() );
 				$last_activity   = sprintf( __( '%s ago', 'supportflow' ), human_time_diff( $modified_gmt ) );
-				echo '<div class="thread-meta"><span class="reply-timestamp">' . esc_html( $reply_timestamp ) . ' (' . $last_activity . ')' . '</span></div>';
+				echo '<div class="ticket-meta"><span class="reply-timestamp">' . esc_html( $reply_timestamp ) . ' (' . $last_activity . ')' . '</span></div>';
 				echo '</li>';
 			}
 			echo '</ul>';
@@ -856,7 +904,7 @@ class SupportFlow_Admin extends SupportFlow {
 	}
 
 	/**
-	 * Modifications to the columns appearing in the All Threads view
+	 * Modifications to the columns appearing in the All Tickets view
 	 *
 	 * @todo maybe add 'Created' column
 	 */
@@ -890,10 +938,10 @@ class SupportFlow_Admin extends SupportFlow {
 
 	/**
 	 * Use the most recent public reply as the post excerpt
-	 * on the Manage Threads view so mode=excerpt works well
+	 * on the Manage Tickets view so mode=excerpt works well
 	 */
 	public function filter_get_the_excerpt( $orig ) {
-		if ( $reply = array_pop( SupportFlow()->get_thread_replies( get_the_ID() ) ) ) {
+		if ( $reply = array_pop( SupportFlow()->get_ticket_replies( get_the_ID() ) ) ) {
 			$reply_author = get_post_meta( $reply->ID, 'reply_author' );
 
 			return $reply_author . ': "' . wp_trim_excerpt( $reply->post_content ) . '"';
@@ -905,15 +953,15 @@ class SupportFlow_Admin extends SupportFlow {
 	/**
 	 * Produce the column values for the custom columns we created
 	 */
-	function action_manage_posts_custom_column( $column_name, $thread_id ) {
+	function action_manage_posts_custom_column( $column_name, $ticket_id ) {
 
 		switch ( $column_name ) {
 			case 'updated':
-				$modified_gmt = get_post_modified_time( 'U', true, $thread_id );
+				$modified_gmt = get_post_modified_time( 'U', true, $ticket_id );
 				echo sprintf( __( '%s ago', 'supportflow' ), human_time_diff( $modified_gmt ) );
 				break;
 			case 'sf_excerpt':
-				$replies = SupportFlow()->get_thread_replies( $thread_id, array( 'numberposts' => 1, 'order' => 'ASC' ) );
+				$replies = SupportFlow()->get_ticket_replies( $ticket_id, array( 'numberposts' => 1, 'order' => 'ASC' ) );
 				if ( ! isset( $replies[0] ) ) {
 					echo '—';
 					break;
@@ -925,7 +973,7 @@ class SupportFlow_Admin extends SupportFlow {
 				echo $first_reply;
 				break;
 			case 'respondents':
-				$respondents = SupportFlow()->get_thread_respondents( $thread_id, array( 'fields' => 'emails' ) );
+				$respondents = SupportFlow()->get_ticket_respondents( $ticket_id, array( 'fields' => 'emails' ) );
 				if ( empty( $respondents ) ) {
 					echo '—';
 					break;
@@ -942,7 +990,7 @@ class SupportFlow_Admin extends SupportFlow {
 				echo implode( '<br />', $respondents );
 				break;
 			case 'status':
-				$post_status = get_post_status( $thread_id );
+				$post_status = get_post_status( $ticket_id );
 				$args        = array(
 					'post_type'   => SupportFlow()->post_type,
 					'post_status' => $post_status,
@@ -952,32 +1000,36 @@ class SupportFlow_Admin extends SupportFlow {
 				echo '<a href="' . esc_url( $filter_link ) . '">' . esc_html( $status_name ) . '</a>';
 				break;
 			case 'email':
-				$email_account_id       = get_post_meta( $thread_id, 'email_account', true );
+				$email_account_id       = get_post_meta( $ticket_id, 'email_account', true );
 				$email_accounts         = SupportFlow()->extend->email_accounts->get_email_accounts();
 				$args                   = array(
 					'post_type'     => SupportFlow()->post_type,
 					'email_account' => $email_account_id,
 				);
+				if ( ! isset( $email_accounts[$email_account_id] ) ) {
+					echo '—';
+					break;
+				}
 				$email_account_username = $email_accounts[$email_account_id]['username'];
 				$filter_link            = add_query_arg( $args, admin_url( 'edit.php' ) );
 				echo '<a href="' . esc_url( $filter_link ) . '">' . esc_html( $email_account_username ) . '</a>';
 				break;
 			case 'sf_replies':
-				$replies = SupportFlow()->get_thread_replies_count( $thread_id );
+				$replies = SupportFlow()->get_ticket_replies_count( $ticket_id );
 				echo '<div class="post-com-count-wrapper">';
 				echo "<span class='replies-count'>{$replies}</span>";
 				echo '</div>';
 				break;
 			case 'created':
-				$created_time = get_the_time( get_option( 'time_format' ) . ' T', $thread_id );
-				$created_date = get_the_time( get_option( 'date_format' ), $thread_id );
+				$created_time = get_the_time( get_option( 'time_format' ) . ' T', $ticket_id );
+				$created_date = get_the_time( get_option( 'date_format' ), $ticket_id );
 				echo sprintf( __( '%s<br />%s', 'supportflow' ), $created_time, $created_date );
 				break;
 		}
 	}
 
 	/**
-	 * Whether or not we're on a view for creating or updating a thread
+	 * Whether or not we're on a view for creating or updating a ticket
 	 *
 	 * @return string $pagenow Return the context for the screen we're in
 	 */
@@ -996,32 +1048,35 @@ class SupportFlow_Admin extends SupportFlow {
 	}
 
 	/**
-	 * When a thread is saved or updated, make sure we save the respondent
+	 * When a ticket is saved or updated, make sure we save the respondent
 	 * and new reply data
 	 */
-	public function action_save_post( $thread_id ) {
+	public function action_save_post( $ticket_id ) {
+		$email_account_id = get_post_meta( $ticket_id, 'email_account', true );
+		$email_account = SupportFlow()->extend->email_accounts->get_email_account( $email_account_id );
+		$ticket_lock   = ( null == $email_account && '' != $email_account );
 
-		if ( SupportFlow()->post_type != get_post_type( $thread_id ) ) {
+		if ( SupportFlow()->post_type != get_post_type( $ticket_id ) ) {
 			return;
 		}
 
 		if ( isset( $_POST['respondents'] ) ) {
 			$respondents = array_map( 'sanitize_email', explode( ',', $_POST['respondents'] ) );
-			SupportFlow()->update_thread_respondents( $thread_id, $respondents );
+			SupportFlow()->update_ticket_respondents( $ticket_id, $respondents );
 		}
 
-		if ( isset( $_POST['post_email_account'] ) && is_numeric( $_POST['post_email_account'] ) ) {
+		if ( isset( $_POST['post_email_account'] ) && is_numeric( $_POST['post_email_account'] ) && '' == $email_account_id ) {
 			$email_account = (int) $_POST['post_email_account'];
-			update_post_meta( $thread_id, 'email_account', $email_account );
+			update_post_meta( $ticket_id, 'email_account', $email_account );
 		}
 
 		if ( isset( $_POST['post_email_notifications_override'] ) && in_array( $_POST['post_email_notifications_override'], array( 'default', 'enable', 'disable' ) ) ) {
-			$email_notifications_override                        = get_post_meta( $thread_id, 'email_notifications_override', true );
+			$email_notifications_override                        = get_post_meta( $ticket_id, 'email_notifications_override', true );
 			$email_notifications_override[get_current_user_id()] = $_POST['post_email_notifications_override'];
-			update_post_meta( $thread_id, 'email_notifications_override', $email_notifications_override );
+			update_post_meta( $ticket_id, 'email_notifications_override', $email_notifications_override );
 		}
 
-		if ( isset( $_POST['reply'] ) && ! empty( $_POST['reply'] ) ) {
+		if ( isset( $_POST['reply'] ) && ! empty( $_POST['reply'] ) && ! $ticket_lock ) {
 			$reply = $_POST['reply'];
 
 			if ( isset( $_POST['insert-signature'] ) && 'on' == $_POST['insert-signature'] ) {
@@ -1035,7 +1090,12 @@ class SupportFlow_Admin extends SupportFlow {
 
 			$visibility = ( ! empty( $_POST['mark-private'] ) ) ? 'private' : 'public';
 			if ( ! empty( $_POST['reply-attachments'] ) ) {
-				$attachment_ids = array_map( 'intval', explode( ',', trim( $_POST['reply-attachments'], ',' ) ) );
+				$attachements   = explode( ',', trim( $_POST['reply-attachments'], ',' ) );
+				// Remove non-int attachment ID's from array
+				$attachements   = array_filter( $attachements, function ( $val ) {
+					return (string) (int) $val === (string) $val;
+				} );
+				$attachment_ids = array_map( 'intval', $attachements );
 			} else {
 				$attachment_ids = '';
 			}
@@ -1048,7 +1108,7 @@ class SupportFlow_Admin extends SupportFlow {
 				'cc'             => $cc,
 				'bcc'            => $bcc,
 			);
-			SupportFlow()->add_thread_reply( $thread_id, $reply, $reply_args );
+			SupportFlow()->add_ticket_reply( $ticket_id, $reply, $reply_args );
 		}
 
 	}

@@ -7,66 +7,6 @@
 
 defined( 'ABSPATH' ) or die( "Cheatin' uh?" );
 
-if ( ! class_exists( 'WP_List_Table' ) ) {
-	require_once( ABSPATH . 'wp-admin/includes/class-wp-list-table.php' );
-}
-
-/**
- * Table to show existing E-Mail accounts with a option to remove existing
- */
-class SupportFlow_User_Permissions_Table extends WP_List_Table {
-	protected $_data;
-
-	function __construct( $user_permissions ) {
-		parent::__construct( array( 'screen' => 'sf_user_permissions_table' ) );
-
-		$this->_data = array();
-		foreach ( $user_permissions as $id => $user_permission ) {
-			$identfier = json_encode( array(
-				'user_id'        => $user_permission['user_id'],
-				'privilege_type' => $user_permission['privilege_type'],
-				'privilege_id'   => $user_permission['privilege_id'],
-			) );
-			$status    = "<input type='checkbox' id='permission_$id' class='toggle_privilege' data-permission-identifier='" . $identfier . "' " . checked( $user_permission['allowed'], true, false ) . '>';
-			$status .= " <label for='permission_$id' class='privilege_status'>" . __( $user_permission['allowed'] ? 'Allowed' : 'Not allowed', 'supportflow' ) . "</label>";
-			$this->_data[] = array(
-				'status'    => $status,
-				'privilege' => esc_html( $user_permission['privilege'] ),
-				'type'      => $user_permission['type'],
-				'user'      => esc_html( $user_permission['user'] ),
-			);
-		}
-	}
-
-	function column_default( $item, $column_name ) {
-		return $item[$column_name];
-	}
-
-	function no_items() {
-		$message = __('No tag/e-mail accounts found. <b>%s</b> before setting user permissions.<br><b>Note: </b>Administrator accounts automatically have full access in SupportFlow.', 'supportflow');
-		$link = '<a href="">' . __('Please add them', 'supportflow') . '</a>';
-		printf($message, $link);
-	}
-
-	function get_columns() {
-		return array(
-			'status'    => __( 'Status', 'supportflow' ),
-			'privilege' => __( 'Privilege', 'supportflow' ),
-			'type'      => __( 'Type', 'supportflow' ),
-			'user'      => __( 'User', 'supportflow' ),
-		);
-	}
-
-	function prepare_items() {
-		$columns               = $this->get_columns();
-		$data                  = $this->_data;
-		$hidden                = array();
-		$sortable              = array();
-		$this->_column_headers = array( $columns, $hidden, $sortable );
-		$this->items           = $data;
-	}
-}
-
 class SupportFlow_Permissions extends SupportFlow {
 
 	/**
@@ -169,11 +109,7 @@ class SupportFlow_Permissions extends SupportFlow {
 		</table>
 
 		<div id="user_permissions_table">
-			<?php
-			$user_permissions_table = new SupportFlow_User_Permissions_Table( $this->get_user_permissions( 0 ) );
-			$user_permissions_table->prepare_items();
-			$user_permissions_table->display();
-			?>
+			<?php $this->show_permissions_table( $this->get_user_permissions( 0 ) ) ?>
 		</div>
 		<script type="text/javascript">
 			jQuery(document).ready(function () {
@@ -268,12 +204,45 @@ class SupportFlow_Permissions extends SupportFlow {
 			$get_allowed    = true;
 			$get_disallowed = true;
 		}
-
-		$user_permissions_table = new SupportFlow_User_Permissions_Table( $this->get_user_permissions( $user_id, $get_allowed, $get_disallowed ) );
-		$user_permissions_table->prepare_items();
-		$user_permissions_table->display();
-
+		$this->show_permissions_table( $this->get_user_permissions( $user_id, $get_allowed, $get_disallowed ) );
 		exit;
+	}
+
+	public function show_permissions_table( $user_permissions ) {
+		$message  = __( 'No tag/e-mail accounts found. <b>%s</b> before setting user permissions.<br><b>Note: </b>Administrator accounts automatically have full access in SupportFlow.', 'supportflow' );
+		$link     = '<a href="">' . __( 'Please add them', 'supportflow' ) . '</a>';
+		$no_items = sprintf( $message, $link );
+
+		$columns = array(
+			'status'    => __( 'Status', 'supportflow' ),
+			'privilege' => __( 'Privilege', 'supportflow' ),
+			'type'      => __( 'Type', 'supportflow' ),
+			'user'      => __( 'User', 'supportflow' ),
+		);
+
+		$data = array();
+		foreach ( $user_permissions as $id => $user_permission ) {
+			$identfier = json_encode( array(
+				'user_id'        => $user_permission['user_id'],
+				'privilege_type' => $user_permission['privilege_type'],
+				'privilege_id'   => $user_permission['privilege_id'],
+			) );
+			$status    = "<input type='checkbox' id='permission_$id' class='toggle_privilege' data-permission-identifier='" . $identfier . "' " . checked( $user_permission['allowed'], true, false ) . '>';
+			$status .= " <label for='permission_$id' class='privilege_status'>" . __( $user_permission['allowed'] ? 'Allowed' : 'Not allowed', 'supportflow' ) . "</label>";
+			$data[] = array(
+				'status'    => $status,
+				'privilege' => esc_html( $user_permission['privilege'] ),
+				'type'      => $user_permission['type'],
+				'user'      => esc_html( $user_permission['user'] ),
+			);
+		}
+
+		$permissions_table = new SupportFlow_Table( 'sf_user_permissions_table' );
+		$permissions_table->set_columns( $columns );
+		$permissions_table->set_no_items( $no_items );
+		$permissions_table->set_data( $data );
+		$permissions_table->display();
+
 	}
 
 	public function get_user_permissions( $user_id, $return_allowed = true, $return_disallowed = true ) {
@@ -383,7 +352,7 @@ class SupportFlow_Permissions extends SupportFlow {
 	function limit_user_permissions( $allcaps, $cap, $args ) {
 		global $pagenow, $post_type;
 
-		// Check if atleast one E-Mail account exists before showing thread creation page
+		// Check if atleast one E-Mail account exists before showing ticket creation page
 		if (
 			'post-new.php' == $pagenow &&
 			SupportFlow()->post_type == $post_type
@@ -391,7 +360,7 @@ class SupportFlow_Permissions extends SupportFlow {
 			$email_accounts = SupportFlow()->extend->email_accounts->get_email_accounts( true );
 			if ( empty( $email_accounts ) ) {
 				$link = "edit.php?post_type=$post_type&page=sf_accounts";
-				$msg  = 'Please add atleast one E-Mail account before creating a thread.';
+				$msg  = 'Please add atleast one E-Mail account before creating a ticket.';
 
 				wp_die( "<a href='$link'>" . __( $msg, 'supportflow' ) . "</a>" );
 			}
@@ -404,7 +373,7 @@ class SupportFlow_Permissions extends SupportFlow {
 			// Return if user is admin
 			( ! empty( $allcaps['manage_options'] ) && true == $allcaps['manage_options'] ) ||
 
-			// Return if posts are not supportflow threads
+			// Return if posts are not supportflow tickets
 			SupportFlow()->post_type != $post_type
 		) {
 			return $allcaps;
@@ -416,12 +385,12 @@ class SupportFlow_Permissions extends SupportFlow {
 		// This capability is requested if user is viewing/modifying existing ticket
 		if ( 'edit_post' == $args[0] ) {
 
-			// Allow if user have access to the tag/E-Mail account used by the thread
+			// Allow if user have access to the tag/E-Mail account used by the ticket
 			if ( $this->is_user_allowed_post( $args[1], $args[2] ) ) {
 				$allcaps["edit_others_posts"] = true;
 				$allcaps["edit_posts"]        = true;
 
-			// Allow if user is creating new thread with permitted E-Mail account
+			// Allow if user is creating new ticket with permitted E-Mail account
 			} elseif (
 				'post.php' == $pagenow &&
 				isset ( $_REQUEST['action'], $_REQUEST['post_email_account'] ) &&
@@ -431,28 +400,28 @@ class SupportFlow_Permissions extends SupportFlow {
 				$allcaps["edit_others_posts"] = true;
 				$allcaps["edit_posts"]        = true;
 
-			// Disallow user access to thread in other cases
+			// Disallow user access to ticket in other cases
 			} else {
 				$allcaps["edit_others_posts"] = false;
 				$allcaps["edit_posts"]        = false;
 			}
 		}
 
-		// Allow deleting thread if user have access to the tag/E-Mail account used by the thread
+		// Allow deleting ticket if user have access to the tag/E-Mail account used by the ticket
 		if ( 'delete_post' == $args[0] && $this->is_user_allowed_post( $args[1], $args[2] ) ) {
 			$allcaps["delete_others_posts"] = true;
 		} else {
 			$allcaps["delete_others_posts"] = false;
 		}
 
-		// This capability is requested if user is creating new thread or listing all threads
+		// This capability is requested if user is creating new ticket or listing all tickets
 		if ( 'edit_posts' == $args[0] ) {
 
-			// List All threads if user have access to atleast one E-Mail account or tag
+			// List All tickets if user have access to atleast one E-Mail account or tag
 			if ( 'post-new.php' != $pagenow && ( ! empty( $user_permissions['email_accounts'] ) || ! empty( $user_permissions['tags'] ) ) ) {
 				$allcaps["edit_posts"] = true;
 
-			// Allow creating new thread if user have access to atleast one E-Mail account
+			// Allow creating new ticket if user have access to atleast one E-Mail account
 			} elseif ( 'post-new.php' == $pagenow && ! empty( $user_permissions['email_accounts'] ) ) {
 				$allcaps["edit_posts"] = true;
 
@@ -514,14 +483,14 @@ class SupportFlow_Permissions extends SupportFlow {
 		// Setup the default caps for SupportFlow
 		$this->_caps = apply_filters(
 			'supportflow_caps', array(
-				'close_others_threads'    => 'sf_close_others_threads',
-				'open_others_threads'     => 'sf_open_others_threads',
-				'reopen_others_threads'   => 'sf_reopen_others_threads',
-				'reply_on_others_threads' => 'sf_reply_on_others_threads',
-				'close_threads'           => 'sf_close_threads',
-				'open_threads'            => 'sf_open_threads',
-				'reopen_threads'          => 'sf_reopen_threads',
-				'reply_on_threads'        => 'sf_reply_on_threads',
+				'close_others_tickets'    => 'sf_close_others_tickets',
+				'open_others_tickets'     => 'sf_open_others_tickets',
+				'reopen_others_tickets'   => 'sf_reopen_others_tickets',
+				'reply_on_others_tickets' => 'sf_reply_on_others_tickets',
+				'close_tickets'           => 'sf_close_tickets',
+				'open_tickets'            => 'sf_open_tickets',
+				'reopen_tickets'          => 'sf_reopen_tickets',
+				'reply_on_tickets'        => 'sf_reply_on_tickets',
 			)
 		);
 
@@ -531,12 +500,12 @@ class SupportFlow_Permissions extends SupportFlow {
 				'administrator' => $this->get_caps(), // Apply all caps
 				'editor'        => $this->get_caps(), // Apply all caps
 				'author'        => array(
-					'close_threads'    => $this->get_cap( 'close_threads' ),
-					'open_threads'     => $this->get_cap( 'open_threads' ),
-					'reply_on_threads' => $this->get_cap( 'reply_on_threads' ),
+					'close_tickets'    => $this->get_cap( 'close_tickets' ),
+					'open_tickets'     => $this->get_cap( 'open_tickets' ),
+					'reply_on_tickets' => $this->get_cap( 'reply_on_tickets' ),
 				),
 				'contributor'   => array(
-					'reply_on_threads' => $this->get_cap( 'reply_on_threads' ),
+					'reply_on_tickets' => $this->get_cap( 'reply_on_tickets' ),
 				),
 			)
 		);
