@@ -7,7 +7,7 @@ defined( 'ABSPATH' ) or die( "Cheatin' uh?" );
  * Plugin URI:  https://wordpress.org/plugins/supportflow/
  * Description: Reinventing how you support your customers.
  * Author:      Daniel Bachhuber, Varun Agrawal, Alex Mills, Andrew Spittle
- * Version:     0.3-beta2
+ * Version:     0.3-beta3
  *
  * Text Domain: supportflow
  * Domain Path: /languages/
@@ -146,7 +146,7 @@ class SupportFlow {
 
 		/** Version ***********************************************************/
 
-		$this->version = '0.3-beta2'; // SupportFlow version
+		$this->version = '0.3-beta3'; // SupportFlow version
 
 		/** Paths *************************************************************/
 
@@ -794,6 +794,8 @@ class SupportFlow {
 		add_post_meta( $reply_id, 'reply_author', esc_sql( $details['reply_author'] ) );
 		add_post_meta( $reply_id, 'reply_author_email', esc_sql( $details['reply_author_email'] ) );
 
+		// Empty autosaved reply
+		delete_post_meta( $ticket_id, '_sf_autosave_reply' );
 
 		// Adding a ticket reply updates the post modified time for the ticket
 		remove_action( 'save_post', array( SupportFlow()->extend->admin, 'action_save_post' ) );
