@@ -1,0 +1,197 @@
+body {
+	margin:           10px;
+	padding:          0;
+	background-color: #f9f9f9;
+	font-family:      sans-serif;
+	color:            #333;
+}
+
+#widget-title {
+	border-bottom: 1px solid #ececec;
+	font:          23px/29px "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", sans-serif;
+	margin:        0;
+	padding:       0 15px 4px 9px;
+}
+
+#supportflow-back {
+	display:               none;
+	position:              relative;
+	background-color:      #fff;
+	border:                1px solid #bbb;
+	font-family:           sans-serif;
+	font-size:             12px;
+	line-height:           14px;
+	text-align:            center;
+	padding:               5px 10px;
+	white-space:           nowrap;
+
+	-webkit-border-radius: 15px;
+	-moz-border-radius:    15px;
+	border-radius:         15px;
+}
+
+#supportflow-back:before {
+	content: "\25C0 \a0";
+}
+
+#supportflow-newticket-box {
+	padding: 10px 0;
+}
+
+#supportflow-newticket,
+#new-ticket-submit {
+	background-color:      #fff;
+	border:                1px solid #bbb;
+	font-family:           sans-serif;
+	font-size:             14px;
+	line-height:           19px;
+	text-align:            center;
+	padding:               5px 10px;
+	white-space:           nowrap;
+	-webkit-border-radius: 15px;
+}
+
+#new-ticket-submit {
+	margin-top: 10px;
+}
+
+#supportflow-existing-ticket-form input[type='text'] {
+	width: 100%;
+}
+
+#supportflow-newticket-form textarea,
+#supportflow-existing-ticket-form textarea {
+	width:                 100%;
+	font-size:             16px;
+	font-weight:           200;
+	border:                1px solid #BBB;
+	-webkit-border-radius: 3px;
+	-moz-border-radius:    3px;
+	border-radius:         3px;
+	color:                 #333;
+	padding:               3px 8px;
+}
+
+#supportflow-newticket-form input[type='submit'],
+#supportflow-existing-ticket-form input[type='submit'] {
+	width:                 100%;
+	font-size:             16px;
+	padding-top:           5px;
+	border:                none;
+	color:                 #222;
+	font-weight:           200;
+	font-family:           "Helvetica Neue", sans-serif;
+	background-color:      #EEE;
+	padding-bottom:        5px;
+	-webkit-border-radius: 3px;
+	-moz-border-radius:    3px;
+	border-radius:         3px;
+	border:                1px solid #BBB;
+}
+
+#supportflow-newticket-form input[type='submit']:hover,
+#supportflow-existing-ticket-form input[type='submit']:hover {
+	cursor:       pointer;
+	border-color: #888;
+	color:        #111;
+}
+
+#supportflow-newticket:hover,
+#supportflow-newticket:active,
+#new-ticket-submit:hover,
+#new-ticket-submit:active,
+#supportflow-back:hover,
+#supportflow-back:active {
+	border-color: #666;
+}
+
+#supportflow-all-tickets .ticket .time {
+	color: gray;
+}
+
+#supportflow-all-tickets .notickets {
+	border-bottom: 1px solid #989898;
+	border-top:    1px solid #989898;
+	color:         #333;
+	font:          16px/21px Georgia, Times, serif;
+	padding:       20px 0;
+	text-align:    center;
+}
+
+#supportflow-newticket-form {
+	display: none;
+	margin:  0;
+}
+
+#supportflow-newticket-form input[name="subject"] {
+	margin-bottom: 6px;
+}
+
+#supportflow-newticket-form input[type="text"] {
+	font-size:   14px;
+	line-height: 150%;
+}
+
+#supportflow-newticket-form input[type="text"] {
+	border:                1px solid #ccc;
+	-webkit-border-radius: 3px;
+	border-radius:         3px;
+	color:                 #333;
+	padding:               3px 8px;
+	width:                 100%;
+}
+
+#supportflow-help:hover,
+#supportflow-help:active {
+	background-color: #13455b;
+}
+
+#supportflow-single-ticket {
+	display: none;
+}
+
+#supportflow-single-ticket ul,
+#supportflow-all-tickets ul {
+	list-style-type: none;
+	margin:          0;
+	padding:         0;
+}
+
+#supportflow-single-ticket ul li,
+#supportflow-all-tickets ul li {
+	border-bottom: 1px solid #ECECEC;
+	padding:       5px 5px 10px 5px;
+}
+
+#supportflow-all-tickets ul li:first-child {
+	border-top:  1px solid #ECECEC;
+	padding-top: 0;
+}
+
+#supportflow-all-tickets ul li:hover {
+	background-color: #fff;
+	cursor:           pointer;
+}
+
+#supportflow-all-tickets ul li h4 {
+	font:   bold 14px/18px "Helvetica Neue", sans-serif;
+	margin: 10px 0 0 0;
+}
+
+.ticket-replies .ticket-reply-body p {
+	font:   13px/18px "Helvetica Neue", sans-serif;
+	margin: 5px 0;
+}
+
+.ticket-replies .ticket-reply-meta {
+	font-size: 12px;
+	color:     #888;
+}
+
+.ticket-replies .ticket-reply-meta .ticket-reply-author {
+	font-weight: bold;
+}
+
+.ticket-replies .ticket-reply-meta .ticket-reply-timestamp {
+	float: right;
+}
