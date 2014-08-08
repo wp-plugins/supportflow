@@ -43,6 +43,9 @@ class SupportFlow_Emails extends SupportFlow {
 
 		$email_accounts   = SupportFlow()->extend->email_accounts->get_email_accounts( true );
 		$email_account_id = get_post_meta( $ticket->ID, 'email_account', true );
+		if ( '' == $email_account_id ) {
+			return;
+		}
 		$smtp_account     = $email_accounts[$email_account_id];
 
 		if ( empty( $agent_ids ) ) {
@@ -86,7 +89,7 @@ class SupportFlow_Emails extends SupportFlow {
 
 		$message = apply_filters( 'supportflow_emails_reply_notify_message', $message, $reply_id, $ticket->ID, 'agent' );
 
-		self::mail( $agent_emails, $subject, $message, '', $attachments, $smtp_account );
+		self::mail( $agent_emails, $subject, $message,  'Content-Type: text/html', $attachments, $smtp_account );
 	}
 
 	/**
@@ -104,6 +107,9 @@ class SupportFlow_Emails extends SupportFlow {
 
 		$email_accounts   = SupportFlow()->extend->email_accounts->get_email_accounts( true );
 		$email_account_id = get_post_meta( $ticket->ID, 'email_account', true );
+		if ( '' == $email_account_id ) {
+			return;
+		}
 		$smtp_account     = $email_accounts[$email_account_id];
 
 		// Don't email the person creating the reply, unless that's desired behavior
@@ -128,7 +134,7 @@ class SupportFlow_Emails extends SupportFlow {
 		$message = stripslashes( $reply->post_content );
 		$message = apply_filters( 'supportflow_emails_reply_notify_message', $message, $reply_id, $ticket->ID, 'respondent' );
 
-		$headers = '';
+		$headers =  "Content-Type: text/html\r\n";
 
 		if ( is_array( $cc ) && ! empty( $cc ) ) {
 			$headers .= "Cc: " . implode( ', ', $cc ) . "\r\n";

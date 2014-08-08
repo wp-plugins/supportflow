@@ -146,7 +146,7 @@ class SupportFlow {
 
 		/** Version ***********************************************************/
 
-		$this->version = '0.1-alpha'; // SupportFlow version
+		$this->version = '0.2'; // SupportFlow version
 
 		/** Paths *************************************************************/
 
@@ -161,12 +161,12 @@ class SupportFlow {
 
 		/** Identifiers *******************************************************/
 
-		$this->post_type                = apply_filters( 'supportflow_thread_post_type', 'sf_thread' ); // Retained sf_thread for backward compatiblity with old versions
+		$this->post_type                = apply_filters( 'supportflow_thread_post_type', 'sf_ticket' );
 		$this->predefinded_replies_type = apply_filters( 'supportflow_predefinded_replies_type', 'sf_predefs' );
 		$this->respondents_tax          = apply_filters( 'supportflow_respondents_taxonomy', 'sf_respondent' );
 		$this->tags_tax                 = apply_filters( 'supportflow_tags_taxonomy', 'sf_tags' );
 		$this->comment_type             = apply_filters( 'supportflow_ticket_comment_type', 'sf_comment' );
-		$this->reply_type               = apply_filters( 'supportflow_ticket_reply_type', 'sf_thread' ); // Retained sf_thread for backward compatiblity with old versions
+		$this->reply_type               = apply_filters( 'supportflow_ticket_reply_type', 'sf_ticket' );
 
 		$this->email_term_prefix = 'sf-';
 
@@ -260,6 +260,9 @@ class SupportFlow {
 		add_action( 'init', array( $this, 'action_init_register_post_type' ) );
 		add_action( 'init', array( $this, 'action_init_register_taxonomies' ) );
 		add_action( 'init', array( $this, 'action_init_register_post_statuses' ) );
+		add_action( 'init', array( $this, 'action_init_upgrade' ) );
+
+		add_filter( 'wp_insert_post_data', array( $this, 'filter_wp_insert_post_data' ), 10, 2 );
 
 		do_action_ref_array( 'supportflow_after_setup_actions', array( &$this ) );
 	}
@@ -353,6 +356,53 @@ class SupportFlow {
 		}
 	}
 
+	/**
+	 * Upgrade database records on update of plugin
+	 *
+	 * @since 0.3
+	 */
+	public function action_init_upgrade() {
+		global $wpdb;
+
+		$code_version = $this->version;
+		$db_version   = get_option( 'sf_version' );
+
+		if ( 0 == version_compare( $code_version, $db_version ) ) {
+			return;
+		}
+
+		// New installation or 0.1 or 0.2
+		if ( ! $db_version ) {
+
+			// Earlier reply ID were stored as post_parent of attachment. Now attachment ID's are stored as post meta of reply
+			$attachments = get_posts( array(
+				'post_type'           => 'attachment',
+				'post_status'         => 'inherit',
+				'post_parent__not_in' => array( '0' ),
+				'posts_per_page'      => - 1,
+
+			) );
+			foreach ( $attachments as $attachment ) {
+				add_post_meta( $attachment->post_parent, 'sf_attachments', $attachment->ID );
+				wp_update_post( array( 'ID' => $attachment->ID, 'post_parent' => 0 ) );
+			}
+
+			// Migrate all posts with post type sf_thread to sf_ticket
+			$db_prefix = $wpdb->prefix;
+			$wpdb->update( "{$db_prefix}posts", array( 'post_type' => 'sf_ticket' ), array( 'post_type' => 'sf_thread' ) );
+		}
+
+		// Update db_version to latest one
+		update_option( 'sf_version', $this->version );
+	}
+
+	public function filter_wp_insert_post_data($data, $postarr) {
+		if ( 0 == $postarr['post_author'] ) {
+			$data['post_author'] = 0;
+		}
+		return $data;
+	}
+
 	/** Helper Functions ******************************************************/
 
 	/**
@@ -418,7 +468,7 @@ class SupportFlow {
 			'reply_author_email' => '',
 			'status'             => key( $post_statuses ),
 			'assignee'           => - 1, // WordPress user ID or username of ticket assignee/owner
-			'email_account'      => 0,
+			'email_account'      => '',
 		);
 
 		$args = wp_parse_args( $args, $defaults );
@@ -560,6 +610,10 @@ class SupportFlow {
 			foreach ( $raw_respondents as $raw_respondent ) {
 				$respondents[] = $raw_respondent->name;
 			}
+		} elseif ( 'slugs' == $args['fields'] ) {
+			foreach ( $raw_respondents as $raw_respondent ) {
+				$respondents[] = $raw_respondent->slug;
+			}
 		}
 
 		return $respondents;
@@ -662,12 +716,13 @@ class SupportFlow {
 	 * @todo support filtering to specific types or replier
 	 */
 	public function get_ticket_replies_count( $ticket_id, $args = array() ) {
-		$args = array(
+		$default_args = array(
 			'posts_per_page' => 1,
 			'post_type'      => $this->post_type,
 			'post_status'    => 'public',
 			'post_parent'    => $ticket_id,
 		);
+		$args         = array_merge( $default_args, $args );
 
 		$query = new WP_Query( $args );
 		$count = $query->found_posts;
@@ -724,7 +779,8 @@ class SupportFlow {
 		// If there are attachment IDs store them as meta
 		if ( is_array( $attachment_ids ) ) {
 			foreach ( $attachment_ids as $attachment_id ) {
-				wp_update_post( array( 'ID' => $attachment_id, 'post_parent' => $reply_id ) );
+				add_post_meta( $reply_id, 'sf_attachments', $attachment_id );
+				SupportFlow()->extend->attachments->insert_attachment_secret_key( $attachment_id );
 			}
 		}
 
@@ -809,6 +865,24 @@ class SupportFlow {
 
 		return $emails;
 	}
+
+	/**
+	 * Sanitize reply content. It allows basic HTML tag like <a>, <b>,...
+	 * Apart from this allow embedding code using <code> tag
+	 *
+	 * @param string $reply Reply to be sanitized
+	 * @return string Sanitized reply
+	 */
+	public function sanitize_ticket_reply( $reply ) {
+		$reply = preg_replace_callback( '~<code>(.*?)</code>~is', create_function( '$arr',
+			'return "<code>" . esc_html( $arr[1] ) . "</code>";'
+		), $reply );
+
+		$reply = wp_kses( $reply, wp_kses_allowed_html( 'post' ) );
+
+		return $reply;
+	}
+
 }
 
 /**

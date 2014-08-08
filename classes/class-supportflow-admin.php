@@ -9,7 +9,10 @@ class SupportFlow_Admin extends SupportFlow {
 
 	function __construct() {
 		add_action( 'wp_ajax_sf_forward_conversation', array( $this, 'action_wp_ajax_sf_email_conversation' ) );
+		add_filter( 'heartbeat_received', array( $this, 'filter_heartbeat_received' ), 10, 2 );
+		add_action( 'wp_ajax_ticket_attachment_upload', array( $this, 'action_wp_ajax_ticket_attachment_upload' ) );
 		add_action( 'supportflow_after_setup_actions', array( $this, 'setup_actions' ) );
+		add_action( 'add_attachment', array( $this, 'action_add_attachment' ) );
 	}
 
 	public function setup_actions() {
@@ -81,6 +84,14 @@ class SupportFlow_Admin extends SupportFlow {
 			wp_localize_script( 'supportflow-tickets', 'SFTickets', array(
 				'no_title_msg'      => __( 'You must need to specify the subject of the ticket', 'supportpress' ),
 				'no_respondent_msg' => __( 'You must need to add atleast one ticket respondent', 'supportpress' ),
+				'pagenow'           => $pagenow,
+				'send_msg'          => __( 'Send Message', 'supportflow' ),
+				'add_private_note'  => __( 'Add Private Note', 'supportflow' ),
+			) );
+
+			wp_enqueue_script( 'supportflow-auto-save', SupportFlow()->plugin_url . 'js/auto_save.js', array( 'jquery', 'heartbeat' ) );
+			wp_localize_script( 'supportflow-auto-save', 'SFAutoSave', array(
+				'ticket_id' => get_the_ID(),
 			) );
 		}
 
@@ -126,6 +137,40 @@ class SupportFlow_Admin extends SupportFlow {
 
 		_e( 'Successfully sented E-Mails', 'supportflow' );
 		exit;
+
+	}
+
+	/**
+	 * Add random characters to attachment uploaded through SupportFlow web UI
+	 *
+	 * @todo Conversion to a better way to determine if attachment if uploaded through SF web UI rather than HTTP referer
+	 */
+	function action_add_attachment( $attachment_id ) {
+		if ( empty( $_SERVER['HTTP_REFERER'] ) ) {
+			return;
+		}
+
+		$post_type = SupportFlow()->post_type;
+		$referer   = $_SERVER['HTTP_REFERER'];
+
+		$url  = parse_url( $referer );
+		$path = $url['scheme'] . '://' . $url['host'] . $url['path'];
+		parse_str( $url['query'], $query );
+
+		// Check if referred by SupportFlow ticket page
+		if ( admin_url( 'post-new.php' ) == $path ) {
+			if ( empty( $query['post_type'] ) || $query['post_type'] != $post_type ) {
+				return;
+			}
+		} elseif ( admin_url( 'post.php' ) == $path ) {
+			if ( empty( $query['post'] ) || get_post_type( (int) $query['post'] ) != $post_type ) {
+				return;
+			}
+		} else {
+			return;
+		}
+
+		SupportFlow()->extend->attachments->secure_attachment_file( $attachment_id );
 	}
 
 	/**
@@ -152,11 +197,41 @@ class SupportFlow_Admin extends SupportFlow {
 		return $messages;
 	}
 
+	public function filter_heartbeat_received( $response, $data ) {
+		if (
+			isset( $data['supportflow-autosave'] ) &&
+			is_array( $data['supportflow-autosave'] ) &&
+			isset( $data['supportflow-autosave']['ticket_id'] ) &&
+			current_user_can( 'edit_post', (int) $data['supportflow-autosave']['ticket_id'] )
+		) {
+			// Save data received from client to the database as post meta
+
+			$ticket_id = (int) $data['supportflow-autosave']['ticket_id'];
+			unset( $data['supportflow-autosave']['ticket_id'] );
+
+			if ( 'auto-draft' == get_post_status( $ticket_id ) ) {
+				wp_update_post( array( 'ID' => $ticket_id, 'post_status' => 'draft' ) );
+			}
+
+			foreach ( $data['supportflow-autosave'] as $element_id => $element_value ) {
+				update_post_meta( $ticket_id, "_sf_autosave_$element_id", $element_value );
+			}
+
+			echo $data['supportflow-autosave']['post_title'];
+			if ( ! empty( $data['supportflow-autosave']['post_title'] ) ) {
+				wp_update_post( array( 'ID' => $ticket_id, 'post_title' => $data['supportflow-autosave']['post_title'] ) );
+			}
+		}
+
+		return $response;
+	}
+
+
 	/**
 	 *
 	 */
 	public function filter_views( $views ) {
-		$post_type     = SupportFlow()->post_type;
+		$post_type    = SupportFlow()->post_type;
 		$statuses     = SupportFlow()->post_statuses;
 		$status_slugs = array();
 
@@ -478,8 +553,62 @@ class SupportFlow_Admin extends SupportFlow {
 		add_meta_box( 'supportflow-replies', __( 'Replies', 'supportflow' ), array( $this, 'meta_box_replies' ), SupportFlow()->post_type, 'normal' );
 
 		if ( 'post.php' == $pagenow ) {
+			add_meta_box( 'supportflow-other-respondents-tickets', __( 'User\'s Recent Tickets', 'supportflow' ), array( $this, 'meta_box_other_respondents_tickets' ), SupportFlow()->post_type, 'side' );
 			add_meta_box( 'supportflow-forward_conversation', __( 'Forward this conversation', 'supportflow' ), array( $this, 'meta_box_email_conversation' ), SupportFlow()->post_type, 'side' );
 		}
+	}
+
+	public function meta_box_other_respondents_tickets() {
+		$ticket_respondents = SupportFlow()->get_ticket_respondents( get_the_ID(), array( 'fields' => 'slugs' ) );
+		$statuses     = SupportFlow()->post_statuses;
+		$status_slugs = array_keys($statuses);
+
+		$table = new SupportFlow_Table( '', false, false );
+
+		if ( empty( $ticket_respondents ) ) {
+			$tickets = array();
+
+		} else {
+			$args = array(
+				'post_type'    => SupportFlow()->post_type,
+				'post_parent'  => 0,
+				'post_status'  => $status_slugs,
+				'numberposts'  => 10,
+				'post__not_in' => array( get_the_id() ),
+				'tax_query'    => array(
+					array(
+						'taxonomy' => SupportFlow()->respondents_tax,
+						'field'    => 'slug',
+						'terms'    => $ticket_respondents,
+					),
+				),
+			);
+
+			$wp_query = new WP_Query( $args );
+			$tickets  = $wp_query->posts;
+		}
+
+		$no_items = __( 'No recent tickets found.', 'supportflow' );
+		$table->set_no_items( $no_items );
+
+		$table->set_columns( array(
+			'title'  => __( 'Subject', 'supportflow' ),
+			'status' => __( 'Status', 'supportflow' ),
+		) );
+
+		$data = array();
+		foreach ( $tickets as $ticket ) {
+			$post_date     = strtotime( $ticket->post_date );
+			$post_modified = strtotime( $ticket->post_modified );
+			$title         = '<b>' . esc_html( $ticket->post_title ) . '</b>';
+			$title         = "<a href='post.php?post=" . $ticket->ID . "&action=edit'>" . $title . "</a>";
+			$data[]        = array(
+				'title'  => $title,
+				'status' => $statuses[$ticket->post_status]['label'],
+			);
+		}
+		$table->set_data( $data );
+		$table->display();
 	}
 
 	public function meta_box_email_conversation() {
@@ -517,9 +646,14 @@ class SupportFlow_Admin extends SupportFlow {
 
 		$current_status_label = $post_statuses[$current_status_id]['label'];
 
-
 		// Get post authors
 		$post_author_id = get_post( get_the_ID() )->post_author;
+
+		// WP change owner to current user if $post_author_id is 0 (returned when ticket is unassigned)
+		if ( 0 == $post_author_id ) {
+			$post_author_id = - 1;
+		}
+
 		if ( 0 < $post_author_id ) {
 			$post_author_label = get_userdata( $post_author_id )->data->user_nicename;
 		} else {
@@ -543,19 +677,21 @@ class SupportFlow_Admin extends SupportFlow {
 		$user_permissions = SupportFlow()->extend->permissions->get_user_permissions_data( get_current_user_id() );
 		$user_permissions = $user_permissions['email_accounts'];
 
-		if ( 'post-new.php' == $pagenow ) {
+		$email_account_id = get_post_meta( get_the_id(), 'email_account', true );
+
+		if ( '' == $email_account_id ) {
 			$email_account_dropdown = '<select class="meta-item-dropdown">';
-			foreach ( $email_accounts as $id => $email_account_id ) {
-				if ( empty( $email_account_id ) || ( ! current_user_can( 'manage_options' ) && ! in_array( $id, $user_permissions ) ) ) {
+			foreach ( $email_accounts as $id => $email_account ) {
+				if ( empty( $email_account ) || ( ! current_user_can( 'manage_options' ) && ! in_array( $id, $user_permissions ) ) ) {
 					continue;
 				}
-				$email_account_dropdown .= '<option value="' . esc_attr( $id ) . '" ' . '>' . esc_html( $email_account_id['username'] ) . '</option>';
+				$email_account_dropdown .= '<option value="' . esc_attr( $id ) . '" ' . '>' . esc_html( $email_account['username'] ) . '</option>';
 			}
 			$email_account_dropdown .= '</select>';
 
 			$email_account_keys  = array_keys( $email_accounts );
-			$email_account_id    = $email_account_keys[0];
-			$email_account_label = $email_accounts[$email_account_id]['username'];
+			$email_account_first = $email_account_keys[0];
+			$email_account_label = $email_accounts[$email_account_first]['username'];
 		}
 
 		// Get E-Mail notification settings
@@ -563,7 +699,7 @@ class SupportFlow_Admin extends SupportFlow {
 		$notification_label       = 'Default';
 		$notification_label_title = 'Choose default if you want to receive E-Mail notifications based on what you set in `E-Mail notification` page. Choose Enable/Disable if you want to override those settings';
 		$notification_dropdown    = '';
-		$notification_dropdown   .= '<select class="meta-item-dropdown">';
+		$notification_dropdown .= '<select class="meta-item-dropdown">';
 
 		if ( 'post-new.php' == $pagenow ) {
 			$notification_dropdown .= '<option value="default">' . __( 'Default', 'supportflow' ) . '</option>';
@@ -591,6 +727,7 @@ class SupportFlow_Admin extends SupportFlow {
 
 		$notification_dropdown .= '</select>';
 
+		$close_ticket_label = __( 'Close ticket', 'supportflow' );
 
 		// Get submit button label
 		if ( 'post-new.php' == $pagenow ) {
@@ -603,14 +740,14 @@ class SupportFlow_Admin extends SupportFlow {
 		<div id="minor-publishing">
 			<div id="misc-publishing-actions">
 
-				<?php if ( 'post-new.php' == $pagenow ) : ?>
+				<?php if ( '' == $email_account_id ) : ?>
 					<div class="misc-pub-section meta-item">
 						<label class="meta-item-toggle-button"><?php _e( 'Account', 'supportflow' ) ?>:</label>
 						<span class="meta-item-label"><?php _e( $email_account_label, 'supportflow' ) ?></span>
 						<a href="#" class="meta-item-toggle-button meta-item-toggle-content hide-if-no-js">
 							<span aria-hidden="true"><?php _e( 'Edit' ) ?></span>
 						</a>
-						<input name="post_email_account" class="meta-item-name" value="<?php echo $email_account_id ?>" type="hidden" />
+						<input name="post_email_account" class="meta-item-name" value="<?php echo $email_account_first ?>" type="hidden" />
 
 						<div class="meta-item-toggle-content hide-if-js">
 							<?php echo $email_account_dropdown ?>
@@ -675,7 +812,7 @@ class SupportFlow_Admin extends SupportFlow {
 					<a href="#" class="meta-item-toggle-button meta-item-toggle-content hide-if-no-js">
 						<span aria-hidden="true"><?php _e( 'Edit' ) ?></span>
 					</a>
-					<input name="post_email_notifications_override" class="meta-item-name" value="<?php $notification_id ?>" type="hidden" />
+					<input name="post_email_notifications_override" class="meta-item-name" value="<?php echo $notification_id ?>" type="hidden" />
 
 					<div class="meta-item-toggle-content hide-if-js">
 						<?php echo $notification_dropdown ?>
@@ -689,8 +826,13 @@ class SupportFlow_Admin extends SupportFlow {
 		</div>
 
 		<div id="major-publishing-actions">
+		<?php if ( 'post.php' == $pagenow && $current_status_id != 'sf_closed' ) : ?>
+			<div id="delete-action">
+				<?php submit_button( $close_ticket_label, '', 'close-ticket-submit', false, array( 'id' => 'close-ticket-submit' ) ); ?>
+			</div>
+		<?php endif; ?>
 			<div id="publishing-action">
-				<?php submit_button( $submit_text, 'save-button primary', 'save', false ); ?>
+				<?php submit_button( $submit_text, 'save-button primary', 'update-ticket', false ); ?>
 			</div>
 			<div class="clear"></div>
 		</div>
@@ -704,7 +846,7 @@ class SupportFlow_Admin extends SupportFlow {
 
 		$placeholder = __( 'What is your conversation about?', 'supportflow' );
 		echo '<h4>' . __( 'Subject', 'supportflow' ) . '</h4>';
-		echo '<input type="text" id="subject" name="post_title" placeholder="' . $placeholder . '" value="' . get_the_title() . '" autocomplete="off" />';
+		echo '<input type="text" id="subject" name="post_title" class="sf_autosave" placeholder="' . $placeholder . '" value="' . get_the_title() . '" autocomplete="off" />';
 		echo '<p class="description">' . __( 'Please describe what this ticket is about in several words', 'supportflow' ) . '</p>';
 
 	}
@@ -714,12 +856,16 @@ class SupportFlow_Admin extends SupportFlow {
 	 */
 	public function meta_box_respondents() {
 
-		$respondents        = SupportFlow()->get_ticket_respondents( get_the_ID(), array( 'fields' => 'emails' ) );
-		$respondents_string = implode( ', ', $respondents );
-		$respondents_string .= empty( $respondents_string ) ? '' : ', ';
 		$placeholder = __( 'Who are you starting a conversation with?', 'supportflow' );
+		if ( 'draft' == get_post_status( get_the_ID() ) ) {
+			$respondents_string = get_post_meta( get_the_ID(), '_sf_autosave_respondents', true );
+		} else {
+			$respondents        = SupportFlow()->get_ticket_respondents( get_the_ID(), array( 'fields' => 'emails' ) );
+			$respondents_string = implode( ', ', $respondents );
+			$respondents_string .= empty( $respondents_string ) ? '' : ', ';
+		}
 		echo '<h4>' . __( 'Respondent(s)', 'supportflow' ) . '</h4>';
-		echo '<input type="text" id="respondents" name="respondents" placeholder="' . $placeholder . '" value="' . esc_attr( $respondents_string ) . '" autocomplete="off" />';
+		echo '<input type="text" id="respondents" name="respondents" class="sf_autosave" placeholder="' . $placeholder . '" value="' . esc_attr( $respondents_string ) . '" autocomplete="off" />';
 		echo '<p class="description">' . __( 'Enter each respondent email address, separated with a comma', 'supportflow' ) . '</p>';
 	}
 
@@ -727,12 +873,14 @@ class SupportFlow_Admin extends SupportFlow {
 	 * Add a form element where you can choose cc and bcc receiver of reply
 	 */
 	public function meta_box_cc_bcc() {
+		$cc_value = esc_attr( get_post_meta( get_the_ID(), '_sf_autosave_cc', true ) );
+		$bcc      = esc_attr( get_post_meta( get_the_ID(), '_sf_autosave_bcc', true ) );
 		?>
 		<p class="description"> <?php _e( "Please add all the E-Mail ID's seperated by comma.", 'supportflow' ) ?></p>
 		<h4 class="inline"><?php _e( "CC: ", 'supportflow' ) ?></h4>
-		<input type="text" id="cc" name="cc" />
+		<input type="text" class="sf_autosave" id="cc" name="cc" value="<?php echo $cc_value ?>" />
 		<h4 class="inline"> <?php _e( "BCC: ", 'supportflow' ) ?></h4>
-		<input type="text" id="bcc" name="bcc" />
+		<input type="text" class="sf_autosave" id="bcc" name="bcc" value="<?php echo $bcc ?>" />
 	<?php
 	}
 
@@ -779,8 +927,8 @@ class SupportFlow_Admin extends SupportFlow {
 				__( "What's burning?", 'supportflow' ),
 				__( 'What do you need to get off your chest?', 'supportflow' ),
 			);
-			$rand        = array_rand( $placeholders );
-			$placeholder = $placeholders[$rand];
+			$rand         = array_rand( $placeholders );
+			$placeholder  = $placeholders[$rand];
 		}
 
 		echo '<div class="alignleft"><h4>' . __( 'Conversation', 'supportflow' ) . '</h4></div>';
@@ -792,7 +940,8 @@ class SupportFlow_Admin extends SupportFlow {
 		echo '</select></div>';
 
 		echo '<div id="ticket-reply-box">';
-		echo "<textarea id='reply' name='reply' $disabled_attr class='ticket-reply' rows='4' placeholder='" . esc_attr( $placeholder ) . "'>";
+		echo "<textarea id='reply' name='reply' $disabled_attr class='ticket-reply sf_autosave' rows='4' placeholder='" . esc_attr( $placeholder ) . "'>";
+		echo esc_html( get_post_meta( get_the_ID(), '_sf_autosave_reply', true ) );
 		echo "</textarea>";
 
 		echo '<div id="message-tools">';
@@ -815,7 +964,7 @@ class SupportFlow_Admin extends SupportFlow {
 		} else {
 			$submit_text = __( 'Send Message', 'supportflow' );
 		}
-		submit_button( $submit_text, 'primary save-button', 'save', false, $submit_attr_array );
+		submit_button( $submit_text, 'primary save-button', 'insert-reply', false, $submit_attr_array );
 		echo '</div>';
 		echo '</div>';
 
@@ -827,7 +976,6 @@ class SupportFlow_Admin extends SupportFlow {
 	}
 
 	public function display_ticket_replies() {
-
 		$private_replies = SupportFlow()->get_ticket_replies( get_the_ID(), array( 'status' => 'private' ) );
 
 		if ( ! empty( $private_replies ) ) {
@@ -839,15 +987,11 @@ class SupportFlow_Admin extends SupportFlow {
 				// Make link clickable
 				$post_content = make_clickable( $post_content );
 				echo $post_content;
-				$attachment_args = array(
-					'post_parent' => $reply->ID,
-					'post_type'   => 'attachment'
-				);
-				if ( $attachments = get_posts( $attachment_args ) ) {
+				if ( $attachment_ids = get_post_meta( $reply->ID, 'sf_attachments' ) ) {
 					echo '<ul class="ticket-reply-attachments">';
-					foreach ( $attachments as $attachment ) {
-						$attachment_link = wp_get_attachment_url( $attachment->ID );
-						echo '<li><a target="_blank" href="' . esc_url( $attachment_link ) . '">' . esc_html( $attachment->post_title ) . '</a></li>';
+					foreach ( $attachment_ids as $attachment_id ) {
+						$attachment_link = SupportFlow()->extend->attachments->get_attachment_url( $attachment_id );
+						echo '<li><a target="_blank" href="' . esc_url( $attachment_link ) . '">' . esc_html( get_the_title( $attachment_id ) ) . '</a></li>';
 					}
 					echo '</ul>';
 				}
@@ -877,15 +1021,11 @@ class SupportFlow_Admin extends SupportFlow {
 				// Make link clickable
 				$post_content = make_clickable( $post_content );
 				echo $post_content;
-				$attachment_args = array(
-					'post_parent' => $reply->ID,
-					'post_type'   => 'attachment'
-				);
-				if ( $attachments = get_posts( $attachment_args ) ) {
+				if ( $attachment_ids = get_post_meta( $reply->ID, 'sf_attachments' ) ) {
 					echo '<ul class="ticket-reply-attachments">';
-					foreach ( $attachments as $attachment ) {
-						$attachment_link = wp_get_attachment_url( $attachment->ID );
-						echo '<li><a target="_blank" href="' . esc_url( $attachment_link ) . '">' . esc_html( $attachment->post_title ) . '</a></li>';
+					foreach ( $attachment_ids as $attachment_id ) {
+						$attachment_link = SupportFlow()->extend->attachments->get_attachment_url( $attachment_id );
+						echo '<li><a target="_blank" href="' . esc_url( $attachment_link ) . '">' . esc_html( get_the_title( $attachment_id ) ) . '</a></li>';
 					}
 					echo '</ul>';
 				}
@@ -905,8 +1045,6 @@ class SupportFlow_Admin extends SupportFlow {
 
 	/**
 	 * Modifications to the columns appearing in the All Tickets view
-	 *
-	 * @todo maybe add 'Created' column
 	 */
 	public function filter_manage_post_columns( $columns ) {
 
@@ -1000,9 +1138,9 @@ class SupportFlow_Admin extends SupportFlow {
 				echo '<a href="' . esc_url( $filter_link ) . '">' . esc_html( $status_name ) . '</a>';
 				break;
 			case 'email':
-				$email_account_id       = get_post_meta( $ticket_id, 'email_account', true );
-				$email_accounts         = SupportFlow()->extend->email_accounts->get_email_accounts();
-				$args                   = array(
+				$email_account_id = get_post_meta( $ticket_id, 'email_account', true );
+				$email_accounts   = SupportFlow()->extend->email_accounts->get_email_accounts();
+				$args             = array(
 					'post_type'     => SupportFlow()->post_type,
 					'email_account' => $email_account_id,
 				);
@@ -1040,7 +1178,8 @@ class SupportFlow_Admin extends SupportFlow {
 			return $pagenow;
 		} elseif ( 'post.php' == $pagenow && ! empty( $_GET['action'] ) && 'edit' == $_GET['action'] && ! empty( $_GET['post'] ) ) {
 			$the_post = get_post( absint( $_GET['post'] ) );
-			return (  is_a( $the_post, 'WP_Post' ) && $the_post->post_type == SupportFlow()->post_type ) ? $pagenow : false;
+
+			return ( is_a( $the_post, 'WP_Post' ) && $the_post->post_type == SupportFlow()->post_type ) ? $pagenow : false;
 		} else {
 			return false;
 		}
@@ -1053,8 +1192,8 @@ class SupportFlow_Admin extends SupportFlow {
 	 */
 	public function action_save_post( $ticket_id ) {
 		$email_account_id = get_post_meta( $ticket_id, 'email_account', true );
-		$email_account = SupportFlow()->extend->email_accounts->get_email_account( $email_account_id );
-		$ticket_lock   = ( null == $email_account && '' != $email_account );
+		$email_account    = SupportFlow()->extend->email_accounts->get_email_account( $email_account_id );
+		$ticket_lock      = ( null == $email_account && '' != $email_account );
 
 		if ( SupportFlow()->post_type != get_post_type( $ticket_id ) ) {
 			return;
@@ -1086,11 +1225,13 @@ class SupportFlow_Admin extends SupportFlow {
 				}
 			}
 
-			$reply = wp_filter_nohtml_kses( $reply );
+			$reply = SupportFlow()->sanitize_ticket_reply( $reply );
 
 			$visibility = ( ! empty( $_POST['mark-private'] ) ) ? 'private' : 'public';
 			if ( ! empty( $_POST['reply-attachments'] ) ) {
 				$attachements   = explode( ',', trim( $_POST['reply-attachments'], ',' ) );
+				// Remove same attachment added more than once
+				$attachements   = array_unique($attachements);
 				// Remove non-int attachment ID's from array
 				$attachements   = array_filter( $attachements, function ( $val ) {
 					return (string) (int) $val === (string) $val;
