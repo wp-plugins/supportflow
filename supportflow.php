@@ -166,12 +166,13 @@ class SupportFlow {
 		$this->predefinded_replies_type = apply_filters( 'supportflow_predefinded_replies_type', 'sf_predefs' );
 		$this->customers_tax          = apply_filters( 'supportflow_customers_taxonomy', 'sf_customer' );
 		$this->tags_tax                 = apply_filters( 'supportflow_tags_taxonomy', 'sf_tags' );
-		$this->comment_type             = apply_filters( 'supportflow_ticket_comment_type', 'sf_comment' );
 		$this->reply_type               = apply_filters( 'supportflow_ticket_reply_type', 'sf_ticket' );
 
 		$this->email_term_prefix = 'sf-';
 
 		$this->ticket_secret_key = 'ticket_secret';
+
+		$this->cron_interval = apply_filters( 'supportflow_cron_interval', 5 * MINUTE_IN_SECONDS );
 
 		$this->post_statuses = apply_filters(
 			'supportflow_ticket_post_statuses', array(
@@ -261,7 +262,11 @@ class SupportFlow {
 		add_action( 'init', array( $this, 'action_init_register_post_type' ) );
 		add_action( 'init', array( $this, 'action_init_register_taxonomies' ) );
 		add_action( 'init', array( $this, 'action_init_register_post_statuses' ) );
+
 		add_action( 'init', array( $this, 'action_init_upgrade' ) );
+
+		add_filter( 'cron_schedules', array( $this, 'action_cron_schedules' ) );
+		add_action( 'init', array( $this, 'action_init_wp_schedule_event' ) );
 
 		add_filter( 'wp_insert_post_data', array( $this, 'filter_wp_insert_post_data' ), 10, 2 );
 
@@ -336,6 +341,7 @@ class SupportFlow {
 			'show_in_nav_menus' => true,
 			'rewrite'           => false,
 			'capabilities'      => $capabilities,
+			'update_count_callback' => array($this, 'callback_update_count_callback_tags' ),
 		);
 
 		register_taxonomy( $this->customers_tax, $this->post_type, $args_customers_tax );
@@ -397,6 +403,35 @@ class SupportFlow {
 
 		// Update db_version to latest one
 		update_option( 'sf_version', $this->version );
+	}
+
+	/**
+	 * Updated count of tickets using a tag
+	 * WP include only post with `published` status when evaluating count. So it is causing problems as SF use different post_stasuses
+	 */
+	public function callback_update_count_callback_tags( $terms, $taxonomy ) {
+		global $wpdb;
+
+		$post_type = $this->post_type;
+
+		$statuses = $this->post_statuses;
+		foreach ( $statuses as $status => $status_data ) {
+			if ( true == $status_data['show_tickets'] ) {
+				$status_slugs[] = $status;
+			}
+		}
+
+		$status_slugs = implode( "', '", $status_slugs );
+
+		foreach ( $terms as $term ) {
+			$count = $wpdb->get_var( $wpdb->prepare(
+				"SELECT COUNT(*) FROM $wpdb->term_relationships, $wpdb->posts WHERE "
+				. "$wpdb->posts.ID = $wpdb->term_relationships.object_id AND post_type = '$post_type' AND post_status IN ('$status_slugs') AND term_taxonomy_id = %d",
+				$term
+			) );
+
+			$wpdb->update( $wpdb->term_taxonomy, compact( 'count' ), array( 'term_taxonomy_id' => $term ) );
+		}
 	}
 
 	public function filter_wp_insert_post_data( $data, $postarr ) {
@@ -677,7 +712,7 @@ class SupportFlow {
 			'post_id'     => '',
 			'search'      => '',
 			'order'       => 'DESC', // 'DESC', 'ASC',
-			'numberposts' => - 1,
+			'posts_per_page' => - 1,
 		);
 
 		$args      = array_merge( $default_args, $args );
@@ -687,7 +722,7 @@ class SupportFlow {
 			'post_status'      => $args['status'],
 			'post_type'        => $this->reply_type,
 			'order'            => $args['order'],
-			'numberposts'      => $args['numberposts'],
+			'posts_per_page'      => $args['posts_per_page'],
 			'suppress_filters' => false,
 		);
 		add_filter( 'posts_clauses', array( $this, 'filter_reply_clauses' ), 10, 2 );
@@ -852,25 +887,27 @@ class SupportFlow {
 	/**
 	 * SupportFlow alternate of wp_enqueue_script() to increase code reuse and save time. Enqueue a JS script
 	 *
-	 * @param string      $handle    Name of the script.
-	 * @param string      $file_name Path to the script "/plugins/supportflow/js/ is automatically prefixed to it.
+	 * @param string $handle         Name of the script.
+	 * @param string $file_name      Path to the script "/plugins/supportflow/js/ is automatically prefixed to it.
 	 *                               Example: 'attachment.js'.
-	 * @param array       $deps      Optional. An array of registered handles this script depends on. Default array( 'jquery' )
-	 * @param string|bool $ver       Optional. String specifying the script version number.
-	 *                               If true current version of SupportFlow will be append to it.
-	 *                               Set false to prevent any version added to it or a string for a particular version of choice
-	 * @param bool        $in_footer Optional. Whether to enqueue the script before </head> or before </body>.
-	 *                               Default 'false'. Accepts 'false' or 'true'.
+	 * @param array  $deps           Optional. An array of registered handles this script depends on. Default array( 'jquery' )
 	 *
 	 * @return string     Handle of enqueued script
 	 */
-	public function enqueue_script( $handle, $file_name, $dependencies = array( 'jquery' ), $version = true, $in_footer = false ) {
-		if ( true === $version ) {
-			$version = $this->version;
+	public function enqueue_script( $handle, $file_name, $deps = array( 'jquery' ) ) {
+		if ( ! $this->script_dev ) {
+			$handle    = 'supportflow-minified-scripts';
+			$file_name = 'supportflow.min.js';
 		}
-		$src = SupportFlow()->plugin_url . "js/$file_name";
 
-		wp_enqueue_script( $handle, $src, $dependencies, $version, $in_footer );
+		foreach ( $deps as $dep ) {
+			wp_enqueue_script( $dep );
+		}
+
+		$version = $this->version;
+		$src     = SupportFlow()->plugin_url . "js/$file_name";
+
+		wp_enqueue_script( $handle, $src, array(), $version );
 
 		return $handle;
 	}
@@ -878,58 +915,29 @@ class SupportFlow {
 	/**
 	 * SupportFlow alternate of wp_enqueue_script() to increase code reuse and save time. Enqueue a CSS stylesheet
 	 *
-	 * @param string      $handle    Name of the stylesheet.
-	 * @param string      $file_name Path to the stylesheet "/plugins/supportflow/css/ is automatically prefixed to it.
+	 * @param string $handle         Handle of the stylesheet. It can be changed within method. You must use use the handle returned by it
+	 * @param string $file_name      Path to the stylesheet "/plugins/supportflow/css/ is automatically prefixed to it.
 	 *                               Example: 'attachment.js'.
-	 * @param array       $deps      Optional. An array of registered handles this script depends on.
-	 * @param string|bool $ver       Optional. String specifying the script version number.
-	 *                               If true current version of SupportFlow will be append to it.
-	 *                               Set false to prevent any version added to it or a string for a particular version of choice
-	 * @param string      $media     Optional. The media for which this stylesheet has been defined.
-	 *                               Default 'all'. Accepts 'all', 'aural', 'braille', 'handheld', 'projection', 'print',
-	 *                               'screen', 'tty', or 'tv'.
+	 * @param array  $deps           Optional. An array of registered handles this syles depends on.
 	 *
 	 * @return string     Handle of enqueued style
 	 */
-	public function enqueue_style( $handle, $file_name, $dependencies = array(), $version = true, $media = 'all' ) {
-		if ( true === $version ) {
-			$version = $this->version;
+	public function enqueue_style( $handle, $file_name, $deps = array() ) {
+		if ( ! $this->script_dev ) {
+			$handle    = 'supportflow-minified-styles';
+			$file_name = 'supportflow.min.css';
 		}
-		$src = SupportFlow()->plugin_url . "css/$file_name";
 
-		wp_enqueue_style( $handle, $src, $dependencies, $version, $media );
+		foreach ( $deps as $dep ) {
+			wp_enqueue_style( $dep );
+		}
+
+		$version = $this->version;
+		$src     = SupportFlow()->plugin_url . "css/$file_name";
+
+		wp_enqueue_style( $handle, $src, array(), $version );
 
 		return $handle;
-	}
-
-	/**
-	 *
-	 * Enqueue minfied and concatenated version all the scripts required by SupportFlow
-	 * Doesn't add localisation data to it
-	 *
-	 * @return string Handle of enqueued script
-	 */
-	public function enqueue_scripts() {
-
-		return $this->enqueue_script(
-			'supportflow-minified-scripts',
-			'supportflow.min.js',
-			array( 'jquery', 'jquery-ui-autocomplete', 'heartbeat' )
-		);
-	}
-
-	/**
-	 *
-	 * Enqueue minfied and concatenated version all the styles required by SupportFlow
-	 *
-	 * @return string Handle of enqueued style
-	 */
-	public function enqueue_styles() {
-
-		return $this->enqueue_style(
-			'supportflow-minified-styles',
-			'supportflow.min.css'
-		);
 	}
 
 	/**
@@ -976,6 +984,34 @@ class SupportFlow {
 		return $reply;
 	}
 
+	public function action_cron_schedules( $schedules ) {
+		$cron_interval = $this->cron_interval;
+
+		$schedules["sf_$cron_interval"] = array(
+			'interval' => $cron_interval,
+			'display'  => "sf_$cron_interval",
+		);
+
+		return $schedules;
+	}
+
+	public function action_init_wp_schedule_event() {
+		$cron_interval = $this->cron_interval;
+
+		if ( ! wp_next_scheduled( 'sf_cron_retrieve_email_replies' ) ) {
+			// Set cron if not scheduled yet
+			wp_schedule_event( time(), "sf_$cron_interval", 'sf_cron_retrieve_email_replies' );
+
+		} elseif ( wp_get_schedule( 'sf_cron_retrieve_email_replies' ) != "sf_$cron_interval" ) {
+			// Reschedule cron if interval is changed
+			wp_clear_scheduled_hook( 'sf_cron_retrieve_email_replies' );
+			wp_schedule_event( time(), "sf_$cron_interval", 'sf_cron_retrieve_email_replies' );
+		}
+	}
+
+	public static function action_register_deactivation_hook() {
+		wp_clear_scheduled_hook( 'sf_cron_retrieve_email_replies' );
+	}
 }
 
 /**
@@ -993,21 +1029,7 @@ function SupportFlow() {
 	return SupportFlow::instance();
 }
 
-add_filter( 'cron_schedules', function ( $schedules ) {
-	$schedules['five_minutes'] = array(
-		'interval' => 5 * MINUTE_IN_SECONDS,
-		'display'  => __( 'Five Minutes', 'supportflow' )
-	);
-
-	return $schedules;
-} );
-
-register_activation_hook( __FILE__, function () {
-	wp_schedule_event( time(), 'five_minutes', 'sf_cron_retrieve_email_replies' );
-} );
-
-register_deactivation_hook( __FILE__, function () {
-	wp_clear_scheduled_hook( 'sf_cron_retrieve_email_replies' );
-} );
-
 add_action( 'plugins_loaded', 'SupportFlow' );
+
+// Remove SupportFlow cron job on deactivation of plugin
+register_deactivation_hook( __FILE__, 'SupportFlow::action_register_deactivation_hook' );
