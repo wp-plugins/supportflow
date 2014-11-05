@@ -169,11 +169,7 @@ class SupportFlow_Emails extends SupportFlow {
 			$msg .= SupportFlow()->sanitize_ticket_reply( $ticket_reply->post_content );
 			$msg .= '<br><br>';
 
-			if ( $ticket_attachments = get_posts( array( 'post_type' => 'attachment', 'post_parent' => $ticket_reply->ID, 'posts_per_page' => -1 ) ) ) {
-				foreach ( $ticket_attachments as $attachment ) {
-					$attachments[] = get_attached_file( $attachment->ID );
-				}
-			}
+			$attachments[] = $this->get_attached_files( $ticket_reply->ID );
 		}
 		self::mail( $to, $subject, $msg, 'Content-Type: text/html', $attachments );
 	}
@@ -194,6 +190,21 @@ class SupportFlow_Emails extends SupportFlow {
 			$this->smtp_account = null;
 			remove_action( 'phpmailer_init', array( $this, 'action_set_smtp_settings' ) );
 		}
+
+		// Log the result, but redact the password to avoid unnecessarily exposing it
+		// translators: %s is the recipients e-mail address
+		$log_message = $result ? __( 'Sending mail to %s succeeded', 'supportflow' ) : __( 'Sending mail to %s failed', 'supportflow' );
+		$log_message = sprintf( $log_message, is_array( $to ) ? implode( ',', $to ) : $to );
+		$redacted_smtp_account = $smtp_account;
+		if ( ! empty( $redacted_smtp_account ) ) {
+			$redacted_smtp_account['password'] = '[redacted]';
+		}
+		SupportFlow()->extend->logger->log(
+			'email_send',
+			__METHOD__,
+			$log_message,
+			compact( 'to', 'subject', 'message', 'headers', 'attachments', 'redacted_smtp_account', 'result' )
+		);
 
 		return $result;
 	}
@@ -247,9 +258,9 @@ class SupportFlow_Emails extends SupportFlow {
 
 	public function get_attached_files( $reply_id ) {
 		$attachments = array();
-		if ( $ticket_attachments = get_posts( array( 'post_type' => 'attachment', 'post_parent' => $reply_id, 'posts_per_page' => -1 ) ) ) {
+		if ( $ticket_attachments = get_post_meta( $reply_id, 'sf_attachments' ) ) {
 			foreach ( $ticket_attachments as $attachment ) {
-				$attachments[] = get_attached_file( $attachment->ID );
+				$attachments[] = get_attached_file( $attachment );
 			}
 		}
 
