@@ -1,7 +1,7 @@
 === SupportFlow ===
 Contributors: VarunAgw, danielbachhuber, Viper007Bond, andrewspittle
 Tags: Ticket, support, admin, customer, customer support, help desk, helpdesk, IT, support, ticket
-Tested up to: 3.9.2
+Tested up to: 4.1
 Stable tag: 0.3
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
