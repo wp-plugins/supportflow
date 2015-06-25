@@ -5,7 +5,9 @@
 
 defined( 'ABSPATH' ) or die( "Cheatin' uh?" );
 
-class SupportFlow_Emails extends SupportFlow {
+class SupportFlow_Emails {
+
+	public $from_address = null;
 
 	function __construct() {
 		add_action( 'supportflow_after_setup_actions', array( $this, 'setup_actions' ) );
@@ -102,9 +104,14 @@ class SupportFlow_Emails extends SupportFlow {
 	 * When a new reply is added to the ticket, notify all of the customers on the ticket
 	 */
 	public function notify_customers_ticket_replies( $reply_id, $cc = array(), $bcc = array() ) {
-		// Customers shouldn't receive private replies
+		// Customers shouldn't receive private replies.
 		$reply = get_post( $reply_id );
 		if ( ! $reply || 'private' == $reply->post_status ) {
+			return;
+		}
+
+		// Customers shouldn't get replies triggered by non-agents.
+		if ( $reply->post_author < 1 ) {
 			return;
 		}
 

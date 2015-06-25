@@ -64,9 +64,12 @@ class SupportFlow {
 	public static function instance() {
 		if ( ! isset( self::$instance ) ) {
 			self::$instance = new SupportFlow;
-			self::$instance->setup_globals();
-			self::$instance->includes();
-			self::$instance->setup_actions();
+
+			if ( self::$instance->requirements_ok() ) {
+				self::$instance->setup_globals();
+				self::$instance->includes();
+				self::$instance->setup_actions();
+			}
 		}
 
 		return self::$instance;
@@ -131,6 +134,26 @@ class SupportFlow {
 	}
 
 	/** Private Methods *******************************************************/
+
+	/**
+	 * Check SupportFlow Requirements.
+	 *
+	 * @access private
+	 */
+	private function requirements_ok() {
+		$this->data['requirements'] = array();
+
+		// Require the php imap extension.
+		if ( ! function_exists( 'imap_open' ) ) {
+			$this->data['requirements'][] = 'imap';
+		}
+
+		if ( ! has_action( 'admin_notices', array( $this, 'action_requirements_admin_notices' ) ) && ! empty( $this->data['requirements'] ) ) {
+			add_action( 'admin_notices', array( $this, 'action_requirements_admin_notices' ) );
+		}
+
+		return empty( $this->data['requirements'] );
+	}
 
 	/**
 	 * Set some smart defaults to class variables. Allow some of them to be
@@ -303,6 +326,38 @@ class SupportFlow {
 				'supports'           => false,
 			)
 		);
+	}
+
+	/**
+	 * Print requirements admin notices if any.
+	 */
+	public function action_requirements_admin_notices() {
+		if ( empty( $this->requirements ) ) {
+			return;
+		}
+
+		$message = '';
+		$strings = array(
+			'imap' => __( 'The PHP IMAP extension is required to collect incoming e-mail messages.', 'supportflow' ),
+		);
+
+		foreach ( $this->requirements as $key ) {
+			if ( empty( $strings[ $key ] ) ) {
+				continue;
+			}
+
+			$message .= sprintf( '<br />%s', esc_html( $strings[ $key ] ) );
+		}
+
+		if ( ! empty( $message ) ) {
+			$message = sprintf( '<p>%s%s</p>',
+				esc_html__( 'Your WordPress install did not meet the following requirements for SupportFlow:', 'supportflow' ),
+				$message );
+		} else {
+			$message = '<p>' . esc_html__( 'An unknown SupportFlow error has occurred.', 'supportflow' ) . '</p>';
+		}
+
+		printf( '<div class="error">%s</div>', $message );
 	}
 
 	/**
@@ -816,9 +871,16 @@ class SupportFlow {
 		);
 
 		$reply = apply_filters( 'supportflow_pre_insert_ticket_reply', $reply );
-		remove_action( 'save_post', array( SupportFlow()->extend->admin, 'action_save_post' ) );
-		$reply_id = wp_insert_post( $reply );
-		add_action( 'save_post', array( SupportFlow()->extend->admin, 'action_save_post' ) );
+
+		// Remove the save_post admin action callback if it exists.
+		if ( ! empty( SupportFlow()->extend->admin ) && is_callable( array( SupportFlow()->extend->admin, 'action_save_post' ) ) ) {
+			remove_action( 'save_post', array( SupportFlow()->extend->admin, 'action_save_post' ) );
+			$reply_id = wp_insert_post( $reply );
+			add_action( 'save_post', array( SupportFlow()->extend->admin, 'action_save_post' ) );
+		} else {
+			$reply_id = wp_insert_post( $reply );
+		}
+
 		// If there are attachment IDs store them as meta
 		if ( is_array( $attachment_ids ) ) {
 			foreach ( $attachment_ids as $attachment_id ) {
@@ -840,9 +902,14 @@ class SupportFlow {
 		delete_post_meta( $ticket_id, '_sf_autosave_reply' );
 
 		// Adding a ticket reply updates the post modified time for the ticket
-		remove_action( 'save_post', array( SupportFlow()->extend->admin, 'action_save_post' ) );
-		wp_update_post( array( 'ID' => $ticket_id, 'post_modified' => current_time( 'mysql' ) ) );
-		add_action( 'save_post', array( SupportFlow()->extend->admin, 'action_save_post' ) );
+		if ( ! empty( SupportFlow()->extend->admin ) && is_callable( array( SupportFlow()->extend->admin, 'action_save_post' ) ) ) {
+			remove_action( 'save_post', array( SupportFlow()->extend->admin, 'action_save_post' ) );
+			wp_update_post( array( 'ID' => $ticket_id, 'post_modified' => current_time( 'mysql' ) ) );
+			add_action( 'save_post', array( SupportFlow()->extend->admin, 'action_save_post' ) );
+		} else {
+			wp_update_post( array( 'ID' => $ticket_id, 'post_modified' => current_time( 'mysql' ) ) );
+		}
+
 		clean_post_cache( $ticket_id );
 		do_action( 'supportflow_ticket_reply_added', $reply_id, $details['cc'], $details['bcc'] );
 
