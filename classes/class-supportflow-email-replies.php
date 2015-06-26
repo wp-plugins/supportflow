@@ -70,11 +70,13 @@ class SupportFlow_Email_Replies {
 
 		$email_accounts = SupportFlow()->extend->email_accounts->get_email_accounts( true );
 		foreach ( $email_accounts as $id => $email_account ) {
-			$imap_account = array_merge( $email_account, array(
-				'inbox'      => 'INBOX',
-				'archive'    => 'ARCHIVE',
-				'account_id' => $id,
-			) );
+			$imap_account = array_merge( $email_account,
+				apply_filters( 'supportflow_imap_folders', array(
+					'inbox'      => 'INBOX',
+					'archive'    => 'ARCHIVE',
+					'account_id' => $id,
+				), $email_account )
+			);
 
 			$this->download_and_process_email_replies( $imap_account );
 		}
@@ -101,6 +103,7 @@ class SupportFlow_Email_Replies {
 		imap_timeout( IMAP_OPENTIMEOUT, apply_filters( 'supportflow_imap_open_timeout', 5 ) );
 
 		$ssl = $connection_details['imap_ssl'] ? '/ssl' : '';
+		$ssl = apply_filters( 'supportflow_imap_ssl', $ssl, $connection_details['imap_host'] );
 
 		$mailbox     = "{{$connection_details['imap_host']}:{$connection_details['imap_port']}{$ssl}}";
 		$inbox       = "{$mailbox}{$connection_details['inbox']}";
