@@ -79,7 +79,7 @@ class SupportFlow_Emails {
 			return;
 		}
 
-		$subject = '[' . get_bloginfo( 'name' ) . '] ' . get_the_title( $ticket->ID );
+		$subject = sprintf( '#%d: %s', $ticket->ID, get_the_title( $ticket->ID ) );
 		$subject = apply_filters( 'supportflow_emails_reply_notify_subject', $subject, $reply_id, $ticket->ID, 'agent' );
 
 		$attachments = $this->get_attached_files( $reply->ID );
@@ -146,8 +146,14 @@ class SupportFlow_Emails {
 		}
 
 		$attachments = $this->get_attached_files( $reply->ID );
+		$num_replies = SupportFlow()->get_ticket_replies_count( $ticket->ID );
+		$subject = sprintf( '#%d: %s', $ticket->ID, get_the_title( $ticket->ID ) );
 
-		$subject = '[' . get_bloginfo( 'name' ) . '] ' . get_the_title( $ticket->ID );
+		// Prefix with Re: if it's a reply.
+		if ( $num_replies > 1 ) {
+			$subject = sprintf( _x( 'Re: %s', 'A prefix for outgoing e-mail replies.', 'supportflow' ), $subject );
+		}
+
 		$subject = apply_filters( 'supportflow_emails_reply_notify_subject', $subject, $reply_id, $ticket->ID, 'customer' );
 
 		$message = SupportFlow()->sanitize_ticket_reply( stripslashes( $reply->post_content ) );
@@ -160,7 +166,8 @@ class SupportFlow_Emails {
 		$headers .= $this->get_cc_header( $cc );
 		$headers .= $this->get_bcc_header( $bcc );
 
-		self::mail( $customers, $subject, $message, $headers, $attachments, $smtp_account );
+		$result = self::mail( $customers, $subject, $message, $headers, $attachments, $smtp_account );
+		add_post_meta( $reply->ID, '_sf_mail_status', array( 'result' => $result ) );
 	}
 
 	/**
@@ -177,7 +184,7 @@ class SupportFlow_Emails {
 
 		$attachments = array();
 		$msg         = '';
-		$subject     = '[' . get_bloginfo( 'name' ) . '] ' . get_the_title( $ticket->ID ) . ' ' . __( 'Conversation summery', 'supportflow' );
+		$subject     = '[' . get_bloginfo( 'name' ) . '] ' . get_the_title( $ticket->ID ) . ' ' . __( 'Conversation summary', 'supportflow' );
 
 		$msg .= '<b>' . __( 'Title', 'supportflow' ) . ':</b> ' . esc_html( $ticket->post_title ) . '<br>';
 		$msg .= '<b>' . __( 'Status', 'supportflow' ) . ':</b> ' . SupportFlow()->post_statuses[$ticket->post_status]['label'] . '<br>';
@@ -249,6 +256,7 @@ class SupportFlow_Emails {
 		$phpmailer->Username   = $this->smtp_account['username'];
 		$phpmailer->Password   = $this->smtp_account['password'];
 		$phpmailer->SMTPAuth   = true;
+		$phpmailer->FromName   = get_bloginfo( 'name' );
 	}
 
 	public function get_cc_header( $cc ) {

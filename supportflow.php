@@ -900,14 +900,23 @@ class SupportFlow {
 
 		// Empty autosaved reply
 		delete_post_meta( $ticket_id, '_sf_autosave_reply' );
+		$update_args = array(
+			'ID' => $ticket_id,
+			'post_modified' => current_time( 'mysql' ),
+		);
+
+		// Allow plugins to override this behavior.
+		if ( get_post_status( $ticket_id ) == 'sf_closed' && add_filter( 'supportflow_reopen_ticket_on_reply', true, $reply_id, $ticket_id ) ) {
+			$update_args['post_status'] = 'sf_open';
+		}
 
 		// Adding a ticket reply updates the post modified time for the ticket
 		if ( ! empty( SupportFlow()->extend->admin ) && is_callable( array( SupportFlow()->extend->admin, 'action_save_post' ) ) ) {
 			remove_action( 'save_post', array( SupportFlow()->extend->admin, 'action_save_post' ) );
-			wp_update_post( array( 'ID' => $ticket_id, 'post_modified' => current_time( 'mysql' ) ) );
+			wp_update_post( $update_args );
 			add_action( 'save_post', array( SupportFlow()->extend->admin, 'action_save_post' ) );
 		} else {
-			wp_update_post( array( 'ID' => $ticket_id, 'post_modified' => current_time( 'mysql' ) ) );
+			wp_update_post( $update_args );
 		}
 
 		clean_post_cache( $ticket_id );
@@ -942,7 +951,7 @@ class SupportFlow {
 
 		$posts = get_posts( array(
 			'post_type'   => SupportFlow()->post_type,
-			'post_status' => key( $post_statuses ),
+			'post_status' => array_keys( $post_statuses ),
 			'meta_query'  => array(
 				array(
 					'key'   => $this->ticket_secret_key,
