@@ -161,16 +161,6 @@ class SupportFlow_Email_Replies {
 				continue;
 			}
 
-			// Convert encoding to UTF-8
-			if ( ! empty( $email->structure->parameters ) ) {
-				foreach ( $email->structure->parameters as $parameter ) {
-					if ( 'CHARSET' == $parameter->attribute ) {
-						$email->body = iconv( $parameter->value, 'UTF-8', $email->body );
-						break;
-					}
-				}
-			}
-
 			// @todo Confirm this a message we want to process
 			$result = $this->process_email( $imap_connection, $email, $email->msgno, $connection_details['username'], $connection_details['account_id'] );
 
@@ -243,7 +233,7 @@ class SupportFlow_Email_Replies {
 		}
 
 		if ( ! empty( $email->headers->subject ) ) {
-			$subject = $email->headers->subject;
+			$subject = imap_utf8( $email->headers->subject );
 		} else {
 			$subject = sprintf( __( 'New ticket from %s', 'supportflow' ), $email->headers->fromaddress );
 		}
@@ -371,11 +361,16 @@ class SupportFlow_Email_Replies {
 	 */
 	public function get_body_from_connection( $connection, $num, $type = 'text/plain' ) {
 		// Hacky way to get the email body. We should support more MIME types in the future
-		$body = imap_fetchbody( $connection, $num, 1.1 );
+		$body = imap_fetchbody( $connection, $num, '1.1' );
 		if ( empty( $body ) ) {
-			$body = imap_fetchbody( $connection, $num, 1 );
+			$body = imap_fetchbody( $connection, $num, '1' );
 		}
 
+		$body = imap_qprint( $body );
+		if ( imap_base64( $body ) )
+			$body = imap_base64( $body );
+
+		$body = imap_utf8( $body );
 		return $body;
 	}
 
