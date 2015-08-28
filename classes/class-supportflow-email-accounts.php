@@ -382,7 +382,14 @@ class SupportFlow_Email_Accounts {
 			try {
 				$smtp_authentication = $phpmailer->smtpConnect();
 			} catch ( Exception $e ) {
+				$smtp_authentication = false;
 
+				SupportFlow()->extend->logger->log(
+					'email_accounts',
+					__METHOD__,
+					sprintf( __( 'PHPMailer exception: %s.', 'supportflow' ), $e->getMessage() ),
+					compact( 'smtp_host', 'smtp_port', 'smtp_ssl', 'username' )
+				);
 			}
 
 			SupportFlow()->extend->logger->log(
@@ -392,7 +399,7 @@ class SupportFlow_Email_Accounts {
 				compact( 'imap_host', 'imap_port', 'imap_ssl', 'smtp_host', 'smtp_port', 'smtp_ssl', 'username', 'mailbox' )
 			);
 
-			if ( ! isset( $smtp_authentication ) || ! $smtp_authentication ) {
+			if ( ! $smtp_authentication ) {
 				return self::SMTP_AUTHENTICATION_FAILED;
 			}
 		}
